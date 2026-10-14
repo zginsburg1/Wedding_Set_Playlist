@@ -300,6 +300,12 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
 .scrub:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 .scrub-times { display: flex; justify-content: space-between; gap: 8px; margin-top: -4px; font: 12.5px var(--font-num); color: var(--ink-2); }
 
+/* ---- a song's own length ---- */
+.len-btn { background: none; border: 0; padding: 8px 0 8px 12px; margin: -8px 0; font: inherit; color: inherit; cursor: pointer; text-align: right; -webkit-tap-highlight-color: transparent; }
+.len-btn::after { content: " ▾"; opacity: .7; }
+.row.open .len-btn::after { content: " ▴"; }
+.len-btn.custom { color: var(--accent); font-weight: 700; }
+
 </style>
 </head>
 <body>
@@ -369,11 +375,12 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
   }
 
   // The stretch of a song that actually plays.
-  // track: {dur, start|null, end|null}  prefs: {maxLen, rehearsal, rehearsalLen}
+  // track: {dur, start|null, end|null, len|null}  prefs: {maxLen, rehearsal, rehearsalLen}
+  // An end time set by hand wins; otherwise a length chosen for that song; otherwise the default length.
   function trackWindow(track, prefs) {
     const dur = track.dur;
     const start = clamp(track.start == null ? 0 : track.start, 0, Math.max(0, dur - 10000));
-    let end = track.end == null ? start + prefs.maxLen : track.end;
+    let end = track.end != null ? track.end : start + (track.len != null ? track.len : prefs.maxLen);
     if (prefs.rehearsal) end = Math.min(end, start + prefs.rehearsalLen);
     end = Math.max(end, start + MIN_WINDOW_MS);
     const naturalEnd = end >= dur - 2000;
@@ -581,7 +588,7 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
       if (!(p.fadeMs > 0)) { restoreVolume().catch(() => {}); return; }
       S.ramp = {
         t0: now(),
-        ms: clamp(Math.round(p.fadeMs * 0.75), 1500, 4000),
+        ms: clamp(Math.round(p.fadeMs * 0.75), 1500, 6000),
         from: S.lastVol != null ? S.lastVol : Math.round(S.base * TRANSITION_FLOOR[normTransition(p.transition)]),
       };
     }
@@ -1286,7 +1293,7 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
       const small = imgs.length ? imgs[imgs.length - 1].url : '';
       list.push({
         id: t.id, uri: t.uri, name: t.name || 'Untitled', dur: t.duration_ms || 0, art: small,
-        artists: (t.artists || []).map((a) => a.name).join(', '), start: null, end: null, rating: 0,
+        artists: (t.artists || []).map((a) => a.name).join(', '), start: null, end: null, len: null, rating: 0,
       });
     }
     const keys = raw.map((e) => { const t = e && (e.item || e.track); return (t && (t.uri || t.id)) || '?'; }).sort().join('\n');
@@ -1323,7 +1330,7 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
       const saved = store.get('wt.d.' + id, { customOrder: false, order: [], t: {} });
       for (const t of list) {
         const s = saved.t && saved.t[t.id];
-        if (s) { t.start = s.s == null ? null : s.s; t.end = s.e == null ? null : s.e; t.rating = E.normRating(s.r); }
+        if (s) { t.start = s.s == null ? null : s.s; t.end = s.e == null ? null : s.e; t.len = s.l == null ? null : s.l; t.rating = E.normRating(s.r); }
         state.tracks.set(t.id, t);
       }
       const spotifyIds = list.map((t) => t.id);
@@ -1359,7 +1366,7 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
     clearTimeout(persist.t);
     if (!state.playlist || state.loading || !state.tracks.size) return;
     const t = {};
-    for (const x of state.tracks.values()) if (x.start != null || x.end != null || x.rating) t[x.id] = { s: x.start, e: x.end, r: x.rating || 0 };
+    for (const x of state.tracks.values()) if (x.start != null || x.end != null || x.len != null || x.rating) t[x.id] = { s: x.start, e: x.end, l: x.len, r: x.rating || 0 };
     store.set('wt.d.' + state.playlist.id, { customOrder: state.customOrder, order: state.customOrder ? state.order : [], t });
   }
 
@@ -1432,7 +1439,23 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
       if (t.end != null && t.end < t.start + E.MIN_WINDOW_MS) t.end = Math.min(top, t.start + E.MIN_WINDOW_MS);
     } else {
       t.end = clamp(Math.round(ms), (t.start || 0) + E.MIN_WINDOW_MS, top);
+      t.len = null; // an end time set by hand replaces a chosen length
     }
+    persist();
+    patchRow(id);
+  }
+  // How long this song is set to play, ignoring rehearsal mode.
+  function chosenLen(t) {
+    const start = t.start || 0;
+    const raw = t.end != null ? t.end - start : t.len != null ? t.len : state.prefs.maxLen;
+    return Math.max(E.MIN_WINDOW_MS, Math.min(raw, Math.max(E.MIN_WINDOW_MS, t.dur - start)));
+  }
+  function setLen(id, ms) {
+    const t = state.tracks.get(id);
+    if (!t) return;
+    const room = Math.max(E.MIN_WINDOW_MS, t.dur - (t.start || 0));
+    t.len = clamp(Math.round(ms), E.MIN_WINDOW_MS, room);
+    t.end = null; // the length now decides where it stops, whatever the start is
     persist();
     patchRow(id);
   }
@@ -1547,7 +1570,14 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
     const b = (v) => `<button role="radio" aria-checked="${t.rating === v}" aria-label="Rate ${v}, ${names[v]}" class="seg-b r${v} ${t.rating === v ? 'on' : ''}" data-act="rate" data-v="${v}">${v}</button>`;
     return `<div class="seg" role="radiogroup" aria-label="Rating for ${esc(t.name)}, 1 is no, 5 is must play">${[1, 2, 3, 4, 5].map(b).join('')}</div>`;
   }
-  const endNote = (t) => `${t.end == null ? `End is automatic: start plus ${fmt(state.prefs.maxLen)}.` : 'End is set by hand.'} Song is ${fmt(t.dur)} long.`;
+  const isCustom = (t) => t.len != null || t.end != null;
+  const endNote = (t) => {
+    const how = t.end != null ? 'End is set by hand, so it stops there.'
+      : t.len != null ? `Plays for ${fmt(t.len)} from wherever it starts.`
+      : `Plays for the default ${fmt(state.prefs.maxLen)} from wherever it starts.`;
+    return `${how} Song is ${fmt(t.dur)} long.${state.prefs.rehearsal ? ' Rehearsal mode is on, so every song is shortened for now.' : ''}`;
+  };
+  const lenLabel = (t, w, el) => `plays ${fmt(w.end - w.start)}${isCustom(t) ? ' · custom' : ''}${w.naturalEnd ? ' · to the end' : ''}${el ? '' : ' · skipped'}`;
   function editorHTML(t, w) {
     const pos = state.order.indexOf(t.id) + 1;
     const stepper = (f, label, val, d) => `<div class="ed-row"><label for="ed-${f}-${esc(t.id)}">${label}</label>
@@ -1555,7 +1585,13 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
         <input id="ed-${f}-${esc(t.id)}" data-change="${f}" inputmode="numeric" autocomplete="off" value="${fmt(val)}">
         <button data-act="nudge" data-f="${f}" data-d="${d}" aria-label="${label} ${d / 1000} seconds later">+${d / 1000}s</button></div>
         ${f === 'end' ? `<button class="link-btn" data-act="autoend" ${t.end == null ? 'hidden' : ''}>Auto</button>` : '<span></span>'}</div>`;
+    const lenRow = `<div class="ed-row"><label for="ed-len-${esc(t.id)}">Plays for</label>
+        <div class="stepper"><button data-act="nudge-len" data-d="-15000" aria-label="Play 15 seconds less">−15s</button>
+        <input id="ed-len-${esc(t.id)}" data-change="len" inputmode="numeric" autocomplete="off" value="${fmt(chosenLen(t))}">
+        <button data-act="nudge-len" data-d="15000" aria-label="Play 15 seconds more">+15s</button></div>
+        <button class="link-btn" data-act="default-len" ${isCustom(t) ? '' : 'hidden'}>Default</button></div>`;
     return `<div class="editor">
+      ${lenRow}
       ${stepper('start', 'Start', w.start, 5000)}
       ${stepper('end', 'End', w.end, 5000)}
       <p class="ed-note" data-role="endnote">${endNote(t)}</p>
@@ -1588,7 +1624,7 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
         <button class="play-btn" data-act="playfrom" data-ico="play" aria-label="Play from ${esc(t.name)}">${ICON.play}</button>
       </div>
       <div class="win-hit" data-scrub="${esc(t.id)}" role="button" aria-label="Hear ${esc(t.name)} from a chosen spot. Tap or drag along the bar."><div class="win"><i class="win-fill" style="left:${left.toFixed(2)}%;width:${width.toFixed(2)}%"></i><b class="ph"></b></div></div>
-      <div class="r-times"><span>${fmt(w.start)} → ${fmt(w.end)}</span><span>plays ${fmt(w.end - w.start)}${w.naturalEnd ? ' · to the end' : ''}${el ? '' : ' · skipped'}</span></div>
+      <div class="r-times"><span>${fmt(w.start)} → ${fmt(w.end)}</span><button class="len-btn ${isCustom(t) ? 'custom' : ''}" data-act="toggle" aria-label="Change how long this song plays">${lenLabel(t, w, el)}</button></div>
       ${segHTML(t)}
       ${open ? editorHTML(t, w) : ''}
     </li>`;
@@ -1632,7 +1668,7 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
     const notes = [];
     if (state.skippedLocal) notes.push(`${state.skippedLocal} item${state.skippedLocal > 1 ? 's' : ''} (local files or podcasts) cannot be played from here.`);
     if (state.hiddenDupes) notes.push(`${state.hiddenDupes} repeated song${state.hiddenDupes > 1 ? 's' : ''} hidden.`);
-    return `${head}<p class="sum" id="sum">${summaryHTML()}</p><p class="hint legend">Rate every song 1 to 5: <b>5</b> must play, <b>3</b> maybe, <b>1</b> no. Tap or drag a song's bar to hear it from that spot.</p>${notes.length ? `<p class="hint">${esc(notes.join(' '))}</p>` : ''}</header>
+    return `${head}<p class="sum" id="sum">${summaryHTML()}</p><p class="hint legend">Rate every song 1 to 5: <b>5</b> must play, <b>3</b> maybe, <b>1</b> no. Tap or drag a song's bar to hear it from that spot. Tap “plays …” to change how long that song plays.</p>${notes.length ? `<p class="hint">${esc(notes.join(' '))}</p>` : ''}</header>
       <div id="savepanel" class="save-panel">${savePanelHTML()}</div>
       <nav class="chips" id="chips" aria-label="Filter songs">${chipsHTML()}</nav>
       ${rows.length ? `<ol class="list">${rows.map(rowHTML).join('')}</ol>` : `<p class="empty">${state.tracks.size ? 'No songs match this filter.' : 'This playlist has no playable songs.'}</p>`}`;
@@ -1668,7 +1704,8 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
     fill.style.width = ((t.dur ? (w.end - w.start) / t.dur : 0) * 100).toFixed(2) + '%';
     const spans = $('.r-times', li).children;
     spans[0].textContent = `${fmt(w.start)} → ${fmt(w.end)}`;
-    spans[1].textContent = `plays ${fmt(w.end - w.start)}${w.naturalEnd ? ' · to the end' : ''}${el ? '' : ' · skipped'}`;
+    spans[1].textContent = lenLabel(t, w, el);
+    spans[1].classList.toggle('custom', isCustom(t));
     li.querySelectorAll('.seg-b').forEach((b) => {
       const on = t.rating === Number(b.dataset.v);
       b.classList.toggle('on', on);
@@ -1678,6 +1715,8 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
     if (ed) {
       $('[data-change="start"]', ed).value = fmt(w.start);
       $('[data-change="end"]', ed).value = fmt(w.end);
+      $('[data-change="len"]', ed).value = fmt(chosenLen(t));
+      $('[data-act="default-len"]', ed).hidden = !isCustom(t);
       $('[data-act="autoend"]', ed).hidden = t.end == null;
       $('[data-role="endnote"]', ed).textContent = endNote(t);
     }
@@ -1815,16 +1854,16 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
     return `<div class="sheet-head"><h1>Settings</h1><button class="icon-btn" data-act="close-sheet" aria-label="Close settings">${ICON.close}</button></div>
 
     <section class="set-group" aria-label="Song length">
-      <div class="set-row"><span class="lbl">Longest a song plays</span>
+      <div class="set-row"><span class="lbl">Default song length</span>
         <div class="stepper"><button data-act="maxlen" data-d="-15000" aria-label="15 seconds shorter">−15s</button>
-        <input id="maxlen" data-change="maxlen" inputmode="numeric" autocomplete="off" value="${fmt(p.maxLen)}" aria-label="Longest a song plays">
+        <input id="maxlen" data-change="maxlen" inputmode="numeric" autocomplete="off" value="${fmt(p.maxLen)}" aria-label="Default song length">
         <button data-act="maxlen" data-d="15000" aria-label="15 seconds longer">+15s</button></div>
-        <p class="sub">Applies to every song that has no end time of its own.</p></div>
+        <p class="sub">How long each song plays unless you give that song its own length. To do that, tap “plays …” on the song.</p></div>
       <div class="set-row"><label for="transition">Change between songs</label>
         <select id="transition" data-change="transition">${opt('blend', 'Smooth blend (dips to 30%)', p.transition)}${opt('deep', 'Deeper dip (to 10%)', p.transition)}${opt('silence', 'Fade to silence', p.transition)}</select>
         <p class="sub">Spotify plays one song at a time, so two songs cannot overlap. Instead the volume eases down, the next song is started a moment early, and the volume eases back up, so there is no dead air.</p></div>
       <div class="set-row"><label for="fade">Length of the change</label>
-        <select id="fade" data-change="fade">${opt(0, 'Off (hard cut)', p.fadeMs)}${opt(2000, '2 seconds', p.fadeMs)}${opt(3000, '3 seconds', p.fadeMs)}${opt(4000, '4 seconds', p.fadeMs)}${opt(6000, '6 seconds', p.fadeMs)}${opt(8000, '8 seconds', p.fadeMs)}</select>
+        <select id="fade" data-change="fade">${opt(0, 'Off (hard cut)', p.fadeMs)}${opt(2000, '2 seconds', p.fadeMs)}${opt(3000, '3 seconds', p.fadeMs)}${opt(4000, '4 seconds', p.fadeMs)}${opt(6000, '6 seconds', p.fadeMs)}${opt(7000, '7 seconds', p.fadeMs)}${opt(8000, '8 seconds', p.fadeMs)}${opt(9000, '9 seconds', p.fadeMs)}${opt(10000, '10 seconds', p.fadeMs)}</select>
         <p class="sub">Uses the phone's Spotify volume, which not every phone allows. The bar tells you if it does not. Try it with Rehearsal mode.</p></div>
       <div class="set-row"><label for="include">Autoplay plays</label>
         <select id="include" data-change="include">${opt('except1', 'Everything except 1s (unrated songs play)', p.include)}${opt('min2', 'Rated 2 or higher', p.include)}${opt('min3', 'Rated 3 or higher', p.include)}${opt('min4', 'Rated 4 or higher', p.include)}${opt('min5', 'Only 5s (must plays)', p.include)}</select>
@@ -1883,7 +1922,7 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
   function backupText() {
     saveNow();
     const t = {};
-    for (const x of state.tracks.values()) if (x.start != null || x.end != null || x.rating) t[x.id] = { s: x.start, e: x.end, r: x.rating || 0 };
+    for (const x of state.tracks.values()) if (x.start != null || x.end != null || x.len != null || x.rating) t[x.id] = { s: x.start, e: x.end, l: x.len, r: x.rating || 0 };
     const p = state.prefs;
     return JSON.stringify({
       app: 'set-trimmer', v: 1, playlist: state.playlist, customOrder: state.customOrder, order: state.customOrder ? state.order : [], t,
@@ -1900,6 +1939,7 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
       const s = b.t[x.id];
       x.start = s && s.s != null ? s.s : null;
       x.end = s && s.e != null ? s.e : null;
+      x.len = s && s.l != null ? s.l : null;
       x.rating = E.normRating(s && s.r);
       if (s) n++;
     }
@@ -2231,7 +2271,9 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
           return setField(id, f, (f === 'start' ? w.start : w.end) + Number(el.dataset.d));
         }
         case 'autoend': t.end = null; persist(); return patchRow(id);
-        case 'reset-trim': t.start = null; t.end = null; persist(); return patchRow(id);
+        case 'nudge-len': return setLen(id, chosenLen(t) + Number(el.dataset.d));
+        case 'default-len': t.len = null; t.end = null; persist(); return patchRow(id);
+        case 'reset-trim': t.start = null; t.end = null; t.len = null; persist(); return patchRow(id);
         case 'mark-start': return markHere(id, 'start');
         case 'mark-end': return markHere(id, 'end');
         case 'move': return moveTo(id, state.order.indexOf(id) + 1 + Number(el.dataset.d));
@@ -2289,6 +2331,11 @@ details > summary { min-height: 44px; display: flex; align-items: center; font-w
         const ms = parseTime(el.value);
         if (ms == null) { toast('Use minutes and seconds, like 2:30.'); return patchRow(id); }
         return setField(id, kind, ms);
+      }
+      case 'len': {
+        const ms = parseTime(el.value);
+        if (ms == null) { toast('Use minutes and seconds, like 1:45.'); return patchRow(id); }
+        return setLen(id, ms);
       }
       case 'order': {
         const n = parseInt(el.value, 10);
