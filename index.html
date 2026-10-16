@@ -1,0 +1,2751 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f3f4f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1014" media="(prefers-color-scheme: dark)">
+<meta name="referrer" content="no-referrer">
+<title>Set Trimmer</title>
+<style>
+/* Layout: one narrow column built for a phone held in one hand. A fixed player bar sits at the
+   bottom; each song row shows its trimmed window drawn against the full length of the song.
+   System fonts only, so nothing has to download at the venue. */
+:root {
+  --bg: #f3f4f7;
+  --surface: #ffffff;
+  --surface-2: #eceef3;
+  --ink: #14171f;
+  --ink-2: #4a5160;
+  --line: #d9dde5;
+  --accent: #0b7480;
+  --accent-soft: #cfe9ec;
+  --r1: #b0352b; --r1-bg: #f9dedb;
+  --r2: #a85410; --r2-bg: #fbe2cd;
+  --r3: #8a6a00; --r3-bg: #faeec6;
+  --r4: #476f12; --r4-bg: #e4f0cd;
+  --r5: #1b7f4d; --r5-bg: #dcf2e5;
+  --maybe: #8a5d00;
+  --maybe-bg: #fbeec9;
+  --no: #b0352b;
+  --no-bg: #f9dedb;
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-num: ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --radius: 14px;
+  --bar-h: 0px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1014;
+    --surface: #171a21;
+    --surface-2: #20242d;
+    --ink: #eef0f5;
+    --ink-2: #a3aab8;
+    --line: #2b303b;
+    --accent: #47c2cf;
+    --accent-soft: #14383d;
+    --r1: #ee7c70; --r1-bg: #3c1d1a;
+    --r2: #f0a063; --r2-bg: #3d2814;
+    --r3: #e5b650; --r3-bg: #3a2f12;
+    --r4: #a6d05a; --r4-bg: #2a3512;
+    --r5: #54c98b; --r5-bg: #173a2a;
+    --maybe: #e5b650;
+    --maybe-bg: #3a2f12;
+    --no: #ee7c70;
+    --no-bg: #3c1d1a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1014; --surface: #171a21; --surface-2: #20242d; --ink: #eef0f5; --ink-2: #a3aab8; --line: #2b303b;
+  --accent: #47c2cf; --accent-soft: #14383d; --r1: #ee7c70; --r1-bg: #3c1d1a; --r2: #f0a063; --r2-bg: #3d2814; --r3: #e5b650; --r3-bg: #3a2f12; --r4: #a6d05a; --r4-bg: #2a3512; --r5: #54c98b; --r5-bg: #173a2a; --maybe: #e5b650;
+  --maybe-bg: #3a2f12; --no: #ee7c70; --no-bg: #3c1d1a; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.4 var(--font-ui);
+  -webkit-tap-highlight-color: transparent;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { touch-action: manipulation; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mono { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+
+#app {
+  max-width: 560px;
+  margin-inline: auto;
+  padding-inline: 16px;
+  padding-block: max(16px, env(safe-area-inset-top)) calc(var(--bar-h) + 28px);
+}
+.eyebrow { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+
+/* ---- buttons ---- */
+.btn {
+  min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--surface); font-weight: 600;
+}
+.btn:active { background: var(--surface-2); }
+.btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btn.primary:active { opacity: .85; }
+.btn.small { min-height: 38px; padding: 0 12px; font-size: 14px; }
+.btn[disabled] { opacity: .45; }
+.icon-btn {
+  width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%;
+  border: 0; background: transparent; color: var(--ink);
+}
+.icon-btn:active { background: var(--surface-2); }
+.icon-btn svg, .play-btn svg { width: 22px; height: 22px; fill: currentColor; }
+.link-btn { background: none; border: 0; padding: 0; color: var(--accent); font-weight: 600; text-decoration: underline; min-height: 32px; }
+
+/* ---- setup + picker ---- */
+.setup h1 { font-size: 26px; line-height: 1.15; margin: 8px 0 8px; text-wrap: balance; letter-spacing: -.01em; }
+.lede { margin: 0 0 20px; color: var(--ink-2); }
+.steps { list-style: none; counter-reset: s; margin: 0; padding: 0; display: grid; gap: 12px; }
+.steps > li {
+  counter-increment: s; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px 14px 14px 52px; position: relative;
+}
+.steps > li::before {
+  content: counter(s); position: absolute; left: 14px; top: 14px; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--ink); color: var(--bg); display: grid; place-items: center; font: 700 13px var(--font-num);
+}
+.steps h2 { margin: 2px 0 6px; font-size: 16px; }
+.steps p { margin: 0 0 8px; color: var(--ink-2); font-size: 14px; }
+.field, .copyrow input {
+  width: 100%; min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--bg); font-family: var(--font-num); font-size: 14px;
+}
+.copyrow { display: flex; gap: 8px; align-items: stretch; }
+.copyrow .btn { flex: none; border-radius: 10px; }
+.err { color: var(--no); margin: 10px 0 0; font-size: 14px; }
+.warn { background: var(--maybe-bg); color: var(--maybe); border-radius: 10px; padding: 10px 12px; margin: 0 0 16px; font-size: 14px; }
+
+.pick h1 { font-size: 24px; margin: 8px 0 4px; }
+.pl-list { list-style: none; padding: 0; margin: 16px 0; display: grid; gap: 8px; }
+.pl-item {
+  width: 100%; text-align: left; display: flex; justify-content: space-between; gap: 12px; align-items: center;
+  min-height: 56px; padding: 10px 14px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface);
+}
+.pl-item .n { font-weight: 600; overflow-wrap: anywhere; }
+.pl-item .c { color: var(--ink-2); font-size: 13px; text-align: right; display: grid; justify-items: end; gap: 2px; flex: none; max-width: 45%; }
+.pl-item.off { opacity: .55; }
+.pl-item.cur { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.cur-tag { color: var(--accent); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.pick .field { margin: 12px 0 0; }
+.pick .btn-row { margin: 0 0 12px; }
+.hint { color: var(--ink-2); font-size: 13px; margin: 0 0 8px; }
+
+/* ---- main header ---- */
+.top-row { display: flex; align-items: center; justify-content: space-between; min-height: 44px; }
+.top-actions { display: flex; margin-right: -8px; }
+.name-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.name-row .btn { flex: none; margin-top: 2px; }
+.pl-name { margin: 0 0 0; flex: 1 1 auto; min-width: 0; font-size: 26px; line-height: 1.15; letter-spacing: -.01em; overflow-wrap: anywhere; text-wrap: balance; }
+.sum { margin: 0 0 14px; color: var(--ink-2); font-size: 14px; }
+.sum b { color: var(--ink); font-family: var(--font-num); font-weight: 700; }
+
+.chips {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; display: flex; gap: 6px; overflow-x: auto;
+  padding: 8px 16px; margin-inline: -16px; background: var(--bg); border-bottom: 1px solid var(--line);
+  scrollbar-width: none;
+}
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  flex: none; min-height: 40px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--surface); font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;
+}
+.chip .n { font-family: var(--font-num); color: var(--ink-2); font-weight: 500; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.chip[aria-pressed="true"] .n { color: inherit; opacity: .8; }
+
+/* ---- song rows ---- */
+.list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 10px; }
+.row {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px 12px;
+  scroll-margin-top: 64px; scroll-margin-bottom: calc(var(--bar-h) + 16px);
+}
+.row.skipped { opacity: .62; }
+.row.playing { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); opacity: 1; }
+.r-main { display: grid; grid-template-columns: 22px 48px minmax(0, 1fr) 44px; align-items: center; gap: 10px; }
+.r-idx { font: 600 12px var(--font-num); color: var(--ink-2); text-align: right; }
+.art { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: var(--surface-2); }
+.r-text { text-align: left; background: none; border: 0; padding: 0; min-height: 48px; display: grid; align-content: center; min-width: 0; }
+.r-title { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r-meta { color: var(--ink-2); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.play-btn { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--bg); display: grid; place-items: center; }
+.play-btn:active { background: var(--surface-2); }
+.row.playing .play-btn { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+
+.win-hit { padding: 12px 0 8px; touch-action: pan-y; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.win { position: relative; height: 8px; border-radius: 4px; background: var(--surface-2); margin: 0; overflow: hidden; }
+.win-fill { position: absolute; top: 0; bottom: 0; background: var(--accent); border-radius: 4px; opacity: .85; }
+.win .ph { position: absolute; top: 0; bottom: 0; width: 3px; background: var(--ink); display: none; }
+.row.playing .win .ph, .row.scrubbing .win .ph { display: block; }
+.r-times { display: flex; justify-content: space-between; gap: 8px; font: 12.5px var(--font-num); color: var(--ink-2); margin-bottom: 10px; }
+
+.seg { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.seg-b { min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font: 700 17px var(--font-num); color: var(--ink-2); }
+.seg-b.on.r1 { background: var(--r1-bg); color: var(--r1); border-color: var(--r1); }
+.seg-b.on.r2 { background: var(--r2-bg); color: var(--r2); border-color: var(--r2); }
+.seg-b.on.r3 { background: var(--r3-bg); color: var(--r3); border-color: var(--r3); }
+.seg-b.on.r4 { background: var(--r4-bg); color: var(--r4); border-color: var(--r4); }
+.seg-b.on.r5 { background: var(--r5-bg); color: var(--r5); border-color: var(--r5); }
+.legend { margin: -6px 0 10px; }
+.legend b { color: var(--ink); font-family: var(--font-num); }
+.chip[class*=" r"]::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
+.chip.r1 { --dot: var(--r1); } .chip.r2 { --dot: var(--r2); } .chip.r3 { --dot: var(--r3); } .chip.r4 { --dot: var(--r4); } .chip.r5 { --dot: var(--r5); }
+
+/* ---- editor ---- */
+.editor { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); display: grid; gap: 10px; }
+.ed-row { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.ed-row label { font-size: 13px; font-weight: 650; color: var(--ink-2); }
+.stepper { display: grid; grid-template-columns: 52px minmax(0, 1fr) 52px; gap: 6px; }
+.stepper button { min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font: 600 14px var(--font-num); }
+.stepper input { min-height: 44px; min-width: 0; text-align: center; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font: 600 16px var(--font-num); }
+.ed-row .link-btn { font-size: 13px; }
+.ed-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.ed-note { margin: 0; font-size: 12.5px; color: var(--ink-2); }
+.empty { text-align: center; color: var(--ink-2); padding: 32px 0; }
+
+/* ---- reorder mode ---- */
+.reorder-note { margin: 0 0 12px; color: var(--ink-2); font-size: 14px; }
+.reorder-note b { color: var(--ink); }
+.list.reorder { margin-top: 4px; gap: 8px; overflow-anchor: none; }
+.rrow { display: grid; grid-template-columns: 44px 20px minmax(0, 1fr) 30px 40px 40px; align-items: center; gap: 6px; padding: 6px 8px; }
+.rrow .r-idx { text-align: center; }
+.rr-text { min-width: 0; display: grid; }
+.handle {
+  width: 44px; height: 48px; display: grid; place-items: center; border: 0; background: transparent; color: var(--ink-2);
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: grab;
+}
+.handle svg { width: 26px; height: 26px; fill: currentColor; }
+.mv { width: 40px; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); display: grid; place-items: center; }
+.mv:active { background: var(--surface-2); }
+.mv svg { width: 24px; height: 24px; fill: currentColor; }
+.rate-badge { font: 700 14px var(--font-num); width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--surface-2); color: var(--ink-2); }
+.rate-badge.r1 { background: var(--r1-bg); color: var(--r1); }
+.rate-badge.r2 { background: var(--r2-bg); color: var(--r2); }
+.rate-badge.r3 { background: var(--r3-bg); color: var(--r3); }
+.rate-badge.r4 { background: var(--r4-bg); color: var(--r4); }
+.rate-badge.r5 { background: var(--r5-bg); color: var(--r5); }
+.row-ph { list-style: none; border: 2px dashed var(--accent); border-radius: var(--radius); background: var(--accent-soft); }
+.row.dragging { box-shadow: 0 12px 30px rgba(0, 0, 0, .3); border-color: var(--accent); opacity: .98; }
+body.is-dragging { user-select: none; -webkit-user-select: none; }
+
+/* ---- player bar ---- */
+.bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--surface); border-top: 1px solid var(--line);
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, .08); padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+}
+.bar-in { max-width: 560px; margin-inline: auto; display: grid; gap: 8px; }
+.bar-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.bar-title { background: none; border: 0; padding: 0; text-align: left; min-width: 0; display: grid; }
+.bar-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-sub { font-size: 12.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-left { font: 600 15px var(--font-num); white-space: nowrap; }
+.bar-ctl { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; }
+.bar-note { margin: 0; font-size: 13px; color: var(--maybe); background: var(--maybe-bg); border-radius: 8px; padding: 6px 10px; }
+.bar-note.bad { color: var(--no); background: var(--no-bg); }
+.bar-meta { margin: 0; font-size: 12.5px; color: var(--ink-2); }
+
+/* ---- settings sheet ---- */
+.sheet { position: fixed; inset: 0; z-index: 40; background: var(--bg); overflow-y: auto; overscroll-behavior: contain; }
+.sheet-in { max-width: 560px; margin-inline: auto; padding: max(16px, env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom, 0px)); }
+.sheet-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.sheet h1 { margin: 0; font-size: 22px; }
+.set-group { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 14px; margin: 12px 0; }
+.set-row { display: grid; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.set-row:last-child { border-bottom: 0; }
+.set-row > label, .set-row > .lbl { font-weight: 650; }
+.set-row .sub { margin: 0; font-size: 13px; color: var(--ink-2); font-weight: 400; }
+.set-row select, .set-row textarea { width: 100%; min-height: 44px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); }
+.set-row textarea { min-height: 96px; font: 12px var(--font-num); }
+.check { display: flex; gap: 12px; align-items: center; min-height: 44px; font-weight: 650; }
+.check input { width: 22px; height: 22px; accent-color: var(--accent); }
+.range { width: 100%; accent-color: var(--accent); min-height: 32px; }
+.dev { display: flex; gap: 12px; align-items: center; min-height: 44px; }
+.dev input { width: 20px; height: 20px; accent-color: var(--accent); }
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.log { margin: 0; padding: 0; list-style: none; font: 12px/1.5 var(--font-num); color: var(--ink-2); max-height: 220px; overflow: auto; }
+details > summary { min-height: 44px; display: flex; align-items: center; font-weight: 650; cursor: pointer; }
+
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--bar-h) + 14px); z-index: 50;
+  background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 14px; max-width: calc(100vw - 32px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .25);
+}
+
+/* ---- saving the order to Spotify ---- */
+.save-panel { margin: 0 0 12px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius); }
+.save-panel:empty { display: none; }
+.save-panel .sub { margin: 0 0 10px; font-size: 14px; color: var(--ink-2); }
+.save-panel .sub b { color: var(--ink); }
+.save-panel .sub:last-child { margin-bottom: 0; }
+.save-panel .err { margin: 8px 0 0; }
+.save-panel .warn { margin: 0 0 10px; font-size: 13.5px; overflow-wrap: anywhere; }
+.save-panel .copyrow { margin: 0 0 10px; }
+.save-panel .copyrow input { min-width: 0; min-height: 40px; font-size: 13px; }
+.save-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.save-row .sub { margin: 0; flex: 1 1 130px; }
+.save-prog { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.save-prog i { display: block; height: 100%; background: var(--accent); }
+.save-panel.sticky { max-height: calc(100vh - 24px); overflow-y: auto; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 6px); z-index: 6; box-shadow: 0 4px 14px rgba(0, 0, 0, .12); }
+
+/* ---- jumping around a song ---- */
+.scrub-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
+.jump { min-width: 54px; min-height: 40px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font: 600 13px var(--font-num); }
+.jump:active { background: var(--surface-2); }
+.scrub { position: relative; height: 40px; display: grid; align-items: center; touch-action: none; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+.scrub-track { position: relative; height: 8px; border-radius: 4px; background: var(--surface-2); }
+.scrub-win { position: absolute; top: 0; bottom: 0; background: var(--accent); opacity: .6; border-radius: 4px; }
+.scrub-ph { position: absolute; top: -7px; width: 4px; height: 22px; margin-left: -2px; border-radius: 2px; background: var(--ink); box-shadow: 0 0 0 2px var(--bg); }
+.scrub:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.scrub-times { display: flex; justify-content: space-between; gap: 8px; margin-top: -4px; font: 12.5px var(--font-num); color: var(--ink-2); }
+
+/* ---- a song's own length ---- */
+.len-btn { background: none; border: 0; padding: 8px 0 8px 12px; margin: -8px 0; font: inherit; color: inherit; cursor: pointer; text-align: right; -webkit-tap-highlight-color: transparent; }
+.len-btn::after { content: " ▾"; opacity: .7; }
+.row.open .len-btn::after { content: " ▴"; }
+.len-btn.custom { color: var(--accent); font-weight: 700; }
+
+/* ---- paste a list ---- */
+.imp-ex { margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--surface-2); font: 12px/1.5 var(--font-num); white-space: pre-wrap; overflow-wrap: anywhere; }
+.set-row .imp-text { min-height: 160px; font: 12px/1.45 var(--font-num); }
+.imp-list { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.imp-list p { margin: 0 0 4px; }
+.imp-list ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink-2); display: grid; gap: 2px; overflow-wrap: anywhere; }
+.imp-list .arrow { color: var(--accent); }
+.imp-done { background: var(--surface); border: 1px solid var(--accent); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; }
+.imp-done .sub { margin: 0; color: var(--ink); }
+#imp-result { display: grid; gap: 10px; }
+#imp-result:empty { display: none; }
+.paste-row { margin: 0 0 8px; }
+#imp-result .check { font-weight: 500; font-size: 15px; line-height: 1.35; }
+
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="bar" class="bar" hidden>
+  <div class="bar-in">
+    <div class="bar-top">
+      <button class="bar-title" id="bar-title" data-act="jump" aria-label="Scroll to the playing song">
+        <span class="bar-name" id="bar-name">Ready</span>
+        <span class="bar-sub" id="bar-sub"></span>
+      </button>
+      <span class="bar-left" id="bar-left"></span>
+    </div>
+    <div class="scrub-row" id="scrub-row" hidden>
+      <button class="jump" id="b-back" data-act="seek-rel" data-d="-10000" aria-label="Back 10 seconds">−10s</button>
+      <div class="scrub" id="scrub" data-scrub="bar" role="slider" tabindex="0" aria-label="Position in the song" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="scrub-track"><i class="scrub-win" id="scrub-win"></i><b class="scrub-ph" id="scrub-ph"></b></div>
+      </div>
+      <button class="jump" id="b-fwd" data-act="seek-rel" data-d="10000" aria-label="Forward 10 seconds">+10s</button>
+    </div>
+    <div class="scrub-times" id="scrub-times" hidden><span id="t-pos">0:00</span><span id="t-cut"></span><span id="t-dur">0:00</span></div>
+    <div class="bar-ctl">
+      <button class="btn primary" id="b-main" data-act="play">Play set</button>
+      <button class="btn" id="b-skip" data-act="skip" hidden>Skip</button>
+      <button class="btn" id="b-stop" data-act="stop" hidden>Stop</button>
+    </div>
+    <p class="bar-note" id="bar-note" role="status" hidden></p>
+    <p class="bar-meta" id="bar-meta" hidden></p>
+  </div>
+</div>
+
+<div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-label="Settings" hidden>
+  <div class="sheet-in" id="sheet-in"></div>
+</div>
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script>
+'use strict';
+/* Set Trimmer: time helpers and the playback engine. No DOM access in here,
+   so the same code runs in the page and in the Node tests. */
+(function (root) {
+  const MIN_WINDOW_MS = 5000;
+  const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+
+  function fmt(ms) {
+    const total = Math.max(0, Math.round(ms / 1000));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const ss = String(s).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+  }
+
+  // "2:30", "1:02:03" or plain seconds ("150") -> milliseconds, or null if unreadable.
+  function parseTime(str) {
+    if (typeof str !== 'string') return null;
+    const s = str.trim();
+    if (!s) return null;
+    let m = s.match(/^(\d+):(\d{1,2})$/);
+    if (m) return +m[2] < 60 ? (+m[1] * 60 + +m[2]) * 1000 : null;
+    m = s.match(/^(\d+):(\d{1,2}):(\d{1,2})$/);
+    if (m) return +m[2] < 60 && +m[3] < 60 ? (+m[1] * 3600 + +m[2] * 60 + +m[3]) * 1000 : null;
+    m = s.match(/^\d+(?:\.\d+)?$/);
+    if (m) return Math.round(parseFloat(s) * 1000);
+    return null;
+  }
+
+  // The stretch of a song that actually plays.
+  // track: {dur, start|null, end|null, len|null}  prefs: {maxLen, rehearsal, rehearsalLen}
+  // An end time set by hand wins; otherwise a length chosen for that song; otherwise the default length.
+  function trackWindow(track, prefs) {
+    const dur = track.dur;
+    const start = clamp(track.start == null ? 0 : track.start, 0, Math.max(0, dur - 10000));
+    let end = track.end != null ? track.end : start + (track.len != null ? track.len : prefs.maxLen);
+    if (prefs.rehearsal) end = Math.min(end, start + prefs.rehearsalLen);
+    end = Math.max(end, start + MIN_WINDOW_MS);
+    const naturalEnd = end >= dur - 2000;
+    if (naturalEnd) end = Math.max(start + 1000, dur - 1200);
+    return { start, end, naturalEnd, playMs: end - start };
+  }
+
+  // Ratings run 1 (no) to 5 (must play); 0 means not rated yet.
+  // The first version of the app used the words must / maybe / no, so those still read correctly.
+  function normRating(r) {
+    if (typeof r === 'number' && r >= 1 && r <= 5) return Math.round(r);
+    if (r === 'must') return 5;
+    if (r === 'maybe') return 3;
+    if (r === 'no') return 1;
+    return 0;
+  }
+
+  // include: 'except1' (everything but 1s, unrated songs play) or 'min2'..'min5' (rated at least that high)
+  const INCLUDE_ALIASES = { notno: 'except1', mustmaybe: 'min3', must: 'min5' };
+  const normInclude = (inc) => {
+    const v = INCLUDE_ALIASES[inc] || inc;
+    return v === 'except1' || /^min[2-5]$/.test(v) ? v : 'except1';
+  };
+  function isEligible(track, include) {
+    const inc = normInclude(include);
+    const r = normRating(track.rating);
+    if (inc === 'except1') return r !== 1;
+    return r >= Number(inc.slice(3));
+  }
+
+  // S-shaped easing: starts and ends gently, so a fade has no audible corners.
+  const smooth = (t) => 0.5 - 0.5 * Math.cos(Math.PI * clamp(t, 0, 1));
+  // Volume part-way through a fade from `base` down to base * floor (t runs 0 to 1).
+  function fadeLevel(base, t, floor = 0) {
+    return Math.round(base * (1 - (1 - floor) * smooth(t)));
+  }
+  // How far the volume dips at a song change. Spotify plays one song at a time, so songs cannot overlap;
+  // the volume eases down, the next song starts a moment early, and the volume eases back up.
+  const TRANSITION_FLOOR = { blend: 0.3, deep: 0.1, silence: 0 };
+  const normTransition = (v) => (Object.prototype.hasOwnProperty.call(TRANSITION_FLOOR, v) ? v : 'blend');
+
+  /* deps: {
+       api:{play(uri,posMs), resume(), pause(), volume(pct), state()},
+       now(), sleep(ms), getTracks(), getPrefs(), onChange(snap), log(msg) } */
+  function createEngine(deps) {
+    const { api, now, getTracks, getPrefs } = deps;
+    const sleep = deps.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+    const onChange = deps.onChange || (() => {});
+    const log = deps.log || (() => {});
+
+    const S = {
+      status: 'idle', // idle | starting | playing | paused | stopped | done | error
+      trackId: null,
+      anchorPos: 0,
+      anchorAt: 0,
+      single: false,
+      note: '',
+      lastCmdAt: -1e9,
+      base: null,
+      volOk: true,
+      lowered: false,
+      volBusy: false,
+      lastVol: null,
+      advancing: false,
+      polling: false,
+      userPaused: false,
+      primedAfterPlay: false,
+      playMs: 600,        // how long Spotify takes to answer a "play" request (smoothed)
+      preAdvanced: false, // the next song was already requested ahead of this song's cut
+      ramp: null,         // volume coming back up after a song change
+      audition: false,    // listening past the cut after a manual jump
+      seeking: false,
+    };
+
+    const tracks = () => getTracks();
+    const byId = (id) => tracks().find((t) => t.id === id) || null;
+    const current = () => byId(S.trackId);
+    const windowFor = (t) => trackWindow(t, getPrefs());
+    const isActive = () => S.status === 'playing' || S.status === 'paused' || S.status === 'starting';
+    const msg = (e) => (e && (e.userMessage || e.message)) || 'Unknown error';
+
+    function position() {
+      return S.status === 'playing' ? S.anchorPos + (now() - S.anchorAt) : S.anchorPos;
+    }
+
+    function nextEligible(fromId) {
+      const list = tracks();
+      const include = getPrefs().include;
+      const i = list.findIndex((t) => t.id === fromId);
+      for (let k = i + 1; k < list.length; k++) if (isEligible(list[k], include)) return list[k];
+      return null;
+    }
+    const firstEligible = () => tracks().find((t) => isEligible(t, getPrefs().include)) || null;
+
+    function snapshot() {
+      const t = current();
+      const next = t ? nextEligible(t.id) : null;
+      return {
+        status: S.status,
+        trackId: S.trackId,
+        pos: position(),
+        win: t ? windowFor(t) : null,
+        note: S.note,
+        single: S.single,
+        nextId: next ? next.id : null,
+        fade: fadeState(),
+        volOk: S.volOk,
+        audition: S.audition,
+      };
+    }
+    const emit = () => onChange(snapshot());
+
+    const fadeEnabled = () => getPrefs().fadeMs > 0 && S.volOk && S.base != null && S.base > 5;
+    function fadeState() {
+      if (!(getPrefs().fadeMs > 0)) return 'off';
+      if (fadeEnabled()) return 'on';
+      if (S.volOk && S.base == null) return 'checking';
+      return 'unavailable';
+    }
+
+    // ---- volume ------------------------------------------------------------
+    async function primeVolume(final) {
+      try {
+        const st = await api.state();
+        const dv = st && st.device;
+        const p = getPrefs();
+        if (!dv && p.volume == null) {
+          // nothing is playing yet, so Spotify has no device to report; look again after the first song starts
+          S.base = null;
+          if (final) {
+            S.volOk = false;
+            log('Spotify did not report a volume, so fades are off.');
+          }
+          return;
+        }
+        const supports = !dv || dv.supports_volume !== false;
+        S.base = p.volume != null ? p.volume : dv && dv.volume_percent != null ? dv.volume_percent : null;
+        S.volOk = supports && S.base != null;
+        if (S.volOk && p.volume != null) await api.volume(S.base);
+        if (!S.volOk && dv) log('This device does not allow volume control, so fades are off.');
+      } catch (e) {
+        S.volOk = false;
+        log('Could not read volume: ' + msg(e));
+      }
+    }
+
+    async function restoreVolume() {
+      S.ramp = null;
+      if (!S.lowered || S.base == null) return;
+      try {
+        await api.volume(S.base);
+        S.lowered = false;
+        S.lastVol = S.base;
+      } catch (e) {
+        log('Volume restore failed: ' + msg(e));
+      }
+    }
+
+    // Time Spotify needs to start the next song; the request goes out this early so the change lands on the cut.
+    const leadMs = () => clamp(Math.round(S.playMs + 150), 400, 2000);
+    function transitionPlan(t, w) {
+      const p = getPrefs();
+      const next = S.single ? null : nextEligible(t.id);
+      const lead = next ? leadMs() : 0;
+      return {
+        next,
+        lead,
+        floor: next || S.single ? TRANSITION_FLOOR[normTransition(p.transition)] : 0, // a preview sounds like a real change; the last song of a set fades out fully
+        fadeMs: Math.min(Math.max(0, p.fadeMs || 0), Math.round((w.end - w.start) * 0.4)),
+        fadeEnd: w.end - lead, // the volume reaches its lowest point here
+      };
+    }
+
+    function sendVolume(level, done) {
+      S.volBusy = true;
+      S.lowered = true;
+      api
+        .volume(level)
+        .then(() => {
+          S.lastVol = level;
+          if (done) done();
+        })
+        .catch((e) => {
+          S.volOk = false;
+          S.ramp = null;
+          log('Fade stopped: ' + msg(e));
+        })
+        .finally(() => {
+          S.volBusy = false;
+        });
+    }
+    function fadeStep(pos, plan) {
+      if (S.volBusy) return;
+      const t = (pos - (plan.fadeEnd - plan.fadeMs)) / plan.fadeMs;
+      const level = fadeLevel(S.base, t, plan.floor);
+      if (S.lastVol === level) return;
+      if (S.lastVol == null && level >= S.base - 3) return;
+      if (S.lastVol != null && t < 1 && Math.abs(S.lastVol - level) < 4) return;
+      sendVolume(level);
+    }
+    // After a song change the volume rises from where the fade left it back to the normal level.
+    function startRamp() {
+      const p = getPrefs();
+      if (!S.lowered || S.base == null || !S.volOk) return;
+      if (!(p.fadeMs > 0)) { restoreVolume().catch(() => {}); return; }
+      S.ramp = {
+        t0: now(),
+        ms: clamp(Math.round(p.fadeMs * 0.75), 1500, 6000),
+        from: S.lastVol != null ? S.lastVol : Math.round(S.base * TRANSITION_FLOOR[normTransition(p.transition)]),
+      };
+    }
+    function rampStep() {
+      const r = S.ramp;
+      if (!r || S.volBusy) return;
+      const t = clamp((now() - r.t0) / r.ms, 0, 1);
+      const level = t >= 1 ? S.base : Math.round(r.from + (S.base - r.from) * smooth(t));
+      if (t < 1 && S.lastVol != null && Math.abs(level - S.lastVol) < 4) return;
+      sendVolume(level, () => {
+        if (t >= 1) {
+          S.lowered = false;
+          S.ramp = null;
+        }
+      });
+    }
+
+    // ---- playing -----------------------------------------------------------
+    async function withRetry(fn) {
+      try {
+        return await fn();
+      } catch (e) {
+        const transient = !e.status || e.status === 429 || e.status >= 500;
+        if (!transient) throw e;
+        await sleep(800);
+        return fn();
+      }
+    }
+
+    function fail(e) {
+      S.status = 'error';
+      S.note = msg(e);
+      log('Error: ' + S.note);
+      restoreVolume().catch(() => {});
+      emit();
+    }
+
+    async function playTrack(t, o = {}) {
+      const w = windowFor(t);
+      const startAt = o.startAt != null ? clamp(o.startAt, 0, Math.max(0, t.dur - 3000)) : w.start;
+      S.trackId = t.id;
+      S.status = 'starting';
+      if (o.single != null) S.single = !!o.single;
+      S.note = '';
+      S.lastCmdAt = now();
+      S.preAdvanced = false;
+      S.audition = false;
+      S.ramp = null;
+      emit();
+      const askedAt = now();
+      try {
+        await withRetry(() => api.play(t.uri, startAt));
+      } catch (e) {
+        fail(e);
+        return;
+      }
+      const took = now() - askedAt;
+      if (took > 0 && took < 4000) S.playMs = Math.round(S.playMs * 0.5 + took * 0.5);
+      S.audition = startAt >= w.end;
+      S.anchorPos = startAt;
+      S.anchorAt = now();
+      S.lastCmdAt = S.anchorAt;
+      S.status = 'playing';
+      S.userPaused = false;
+      log(`Playing "${t.name}" ${fmt(startAt)} to ${fmt(w.end)}`);
+      emit();
+      startRamp();
+      if ((S.base == null || !S.volOk) && !S.primedAfterPlay) {
+        S.primedAfterPlay = true;
+        sleep(800).then(() => (S.lowered ? null : primeVolume(true))).catch(() => {});
+      }
+    }
+
+    async function endRun(status, note) {
+      try {
+        await api.pause();
+      } catch (e) {
+        /* already stopped */
+      }
+      S.lastCmdAt = now();
+      await restoreVolume();
+      S.status = status;
+      S.note = note || '';
+      emit();
+    }
+
+    async function advance() {
+      if (S.advancing) return;
+      S.advancing = true;
+      try {
+        if (S.single) {
+          await endRun('idle');
+          return;
+        }
+        const next = nextEligible(S.trackId);
+        if (!next) {
+          await endRun('done', 'Reached the end of the set.');
+          return;
+        }
+        await playTrack(next);
+      } catch (e) {
+        fail(e);
+      } finally {
+        S.advancing = false;
+      }
+    }
+
+    // ---- public controls ---------------------------------------------------
+    async function start(fromId, opts = {}) {
+      const t = fromId ? byId(fromId) : firstEligible();
+      if (!t) {
+        S.status = 'error';
+        S.note = 'No songs to play. Check the ratings or the Autoplay setting.';
+        emit();
+        return;
+      }
+      S.single = !!opts.single;
+      if (!isActive()) {
+        S.lowered = false;
+        S.primedAfterPlay = false;
+        S.lastVol = null;
+        S.volOk = true;
+        await primeVolume();
+      } else {
+        await restoreVolume();
+      }
+      await playTrack(t, opts);
+    }
+
+    async function pause() {
+      if (S.status !== 'playing') return;
+      S.anchorPos = position();
+      S.status = 'paused';
+      S.userPaused = true;
+      S.note = '';
+      S.lastCmdAt = now();
+      emit();
+      try {
+        await api.pause();
+      } catch (e) {
+        S.note = 'Could not pause: ' + msg(e);
+        emit();
+      }
+      await restoreVolume();
+    }
+
+    async function resume() {
+      if (S.status !== 'paused') return;
+      S.lastCmdAt = now();
+      try {
+        await api.resume();
+        S.anchorAt = now();
+        S.status = 'playing';
+        S.userPaused = false;
+        S.note = '';
+        emit();
+      } catch (e) {
+        const t = current();
+        if (t) await playTrack(t, { startAt: S.anchorPos });
+      }
+    }
+
+    async function skip() {
+      if (!isActive()) return;
+      const next = nextEligible(S.trackId);
+      if (!next || S.single) {
+        await endRun(S.single ? 'idle' : 'done', S.single ? '' : 'Reached the end of the set.');
+        return;
+      }
+      await restoreVolume();
+      await playTrack(next);
+    }
+
+    async function stop() {
+      if (!isActive() && S.status !== 'stopped' && S.status !== 'error' && S.status !== 'done') return;
+      try {
+        await api.pause();
+      } catch (e) {
+        /* nothing playing */
+      }
+      S.lastCmdAt = now();
+      await restoreVolume();
+      S.status = 'idle';
+      S.trackId = null;
+      S.note = '';
+      emit();
+    }
+
+    function tick() {
+      if (S.status !== 'playing' || S.seeking) return;
+      const t = current();
+      if (!t) return;
+      const w = windowFor(t);
+      const pos = position();
+      if (S.audition) {
+        // listening past the cut after a jump: no cut and no fade; the song's own end carries on with the set
+        if (pos >= t.dur - 1200) advance();
+        return;
+      }
+      const plan = transitionPlan(t, w);
+      const inFade = fadeEnabled() && !w.naturalEnd && plan.fadeMs > 0 && pos >= plan.fadeEnd - plan.fadeMs && pos < w.end;
+      if (inFade) {
+        S.ramp = null;
+        fadeStep(pos, plan);
+      } else if (S.ramp) {
+        rampStep();
+      }
+      if (plan.next && !S.preAdvanced && pos >= plan.fadeEnd) {
+        S.preAdvanced = true;
+        log(`Starting the next song ${(plan.lead / 1000).toFixed(1)} s early so the change lands on the cut.`);
+        advance();
+        return;
+      }
+      if (pos >= w.end) advance();
+    }
+
+    // Jump to another point of the song that is playing or paused.
+    async function seek(ms) {
+      const t = current();
+      if ((S.status !== 'playing' && S.status !== 'paused') || !t || !api.seek || S.seeking) return false;
+      const target = clamp(Math.round(ms), 0, Math.max(0, t.dur - 3000));
+      const w = windowFor(t);
+      S.seeking = true;
+      S.lastCmdAt = now();
+      try {
+        await withRetry(() => api.seek(target));
+      } catch (e) {
+        S.seeking = false;
+        S.note = 'Could not jump: ' + msg(e);
+        emit();
+        return false;
+      }
+      S.anchorPos = target;
+      S.anchorAt = now();
+      S.lastCmdAt = S.anchorAt;
+      S.preAdvanced = false;
+      const wasPast = S.audition;
+      S.audition = target >= w.end;
+      S.note = '';
+      if (S.audition && !wasPast) log(`Jumped to ${fmt(target)}, past the cut at ${fmt(w.end)}. Listening on until Skip.`);
+      S.seeking = false;
+      restoreVolume().catch(() => {});
+      emit();
+      return true;
+    }
+
+    async function poll() {
+      if ((S.status !== 'playing' && S.status !== 'paused') || S.polling) return;
+      S.polling = true;
+      try {
+        const st = await api.state();
+        if (now() - S.lastCmdAt < 2500) return;
+        if (S.status !== 'playing' && S.status !== 'paused') return;
+        const t = current();
+        if (!t) return;
+        if (!st || !st.item) {
+          if (S.status === 'playing') {
+            const pos = position();
+            if (S.audition ? pos >= t.dur - 3000 : pos >= windowFor(t).end - 3000) {
+              advance();
+            } else {
+              S.anchorPos = pos;
+              S.status = 'paused';
+              S.note = 'Spotify stopped playing.';
+              log(S.note);
+              emit();
+            }
+          }
+          return;
+        }
+        if (st.item.uri !== t.uri) {
+          S.status = 'stopped';
+          S.note = 'Spotify switched to a different song, so autoplay stopped.';
+          log(S.note);
+          emit();
+          return;
+        }
+        if (st.is_playing) {
+          S.anchorPos = st.progress_ms;
+          S.anchorAt = now();
+          S.userPaused = false;
+          if (S.status === 'paused') {
+            S.status = 'playing';
+            S.note = '';
+            log('Playback resumed in Spotify.');
+            emit();
+          }
+        } else if (S.status === 'playing') {
+          if (st.progress_ms >= t.dur - 1500 || (!S.audition && position() >= windowFor(t).end - 1500)) {
+            advance();
+          } else {
+            S.anchorPos = st.progress_ms;
+            S.status = 'paused';
+            S.note = 'Paused in Spotify.';
+            log(S.note);
+            emit();
+          }
+        } else {
+          S.anchorPos = st.progress_ms;
+        }
+      } catch (e) {
+        log('Status check failed: ' + msg(e));
+      } finally {
+        S.polling = false;
+      }
+    }
+
+    return { start, pause, resume, skip, stop, seek, tick, poll, snapshot, position, restoreVolume };
+  }
+
+  // ---- reordering a Spotify playlist ----------------------------------------------------------------------
+  // Spotify can only move a block of items per call ("take the item at range_start and insert it before
+  // insert_before"). planMoves works out the fewest single-item moves that turn `current` into `target`.
+  // Both are arrays of the same unique ids. Items already in the right relative order (the longest
+  // increasing run) stay put; every other item is moved right behind the item that should precede it.
+  function planMoves(current, target) {
+    const n = current.length;
+    if (target.length !== n) throw new Error('Both orders must hold the same items');
+    const tpos = new Map(target.map((id, i) => [id, i]));
+    if (tpos.size !== n || current.some((id) => !tpos.has(id))) throw new Error('Both orders must hold the same unique items');
+    // longest increasing subsequence of target positions, read in current order
+    const seq = current.map((id) => tpos.get(id));
+    const tails = [];
+    const prev = new Array(n).fill(-1);
+    for (let i = 0; i < n; i++) {
+      let lo = 0;
+      let hi = tails.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (seq[tails[mid]] < seq[i]) lo = mid + 1; else hi = mid; }
+      if (lo > 0) prev[i] = tails[lo - 1];
+      tails[lo] = i;
+    }
+    const keep = new Set();
+    for (let k = tails.length ? tails[tails.length - 1] : -1; k >= 0; k = prev[k]) keep.add(current[k]);
+    const arr = current.slice();
+    const ops = [];
+    for (let i = 0; i < n; i++) {
+      const x = target[i];
+      if (keep.has(x)) continue;
+      const j = arr.indexOf(x);
+      const b = i === 0 ? 0 : arr.indexOf(target[i - 1]) + 1; // "insert before" index, counted before the item is lifted out
+      if (j === b) continue; // already right behind its predecessor
+      ops.push({ range_start: j, insert_before: b });
+      arr.splice(j, 1);
+      arr.splice(b > j ? b - 1 : b, 0, x);
+    }
+    return ops;
+  }
+  // slots[p] is the track id shown on screen at playlist position p, or null for an item the page hides or
+  // cannot play (local files, podcasts, repeated songs). `order` is the wanted order of the shown tracks.
+  // `dupAt` maps the position of each repeated copy to the id of the song it repeats.
+  // Hidden items keep their own positions and the shown tracks are dealt into the remaining ones. One exception:
+  // the page treats the first copy of a song as the shown one, so a repeated copy that would end up in front of
+  // its song is moved to the very end of the playlist. Nothing is ever removed.
+  function planReorder(slots, order, dupAt) {
+    const posOf = new Map();
+    slots.forEach((id, p) => { if (id != null) posOf.set(id, p); });
+    if (order.length !== posOf.size || order.some((id) => !posOf.has(id)) || new Set(order).size !== order.length) {
+      throw new Error('The order does not match the songs in the playlist');
+    }
+    let k = 0;
+    const target = slots.map((id, p) => (id == null ? p : posOf.get(order[k++])));
+    const dups = dupAt instanceof Map ? Array.from(dupAt) : Object.entries(dupAt || {}).map(([p, id]) => [Number(p), id]);
+    for (const [dp, id] of dups) {
+      const vp = posOf.get(id);
+      if (vp == null) continue;
+      const d = target.indexOf(dp);
+      if (d >= 0 && d < target.indexOf(vp)) { target.splice(d, 1); target.push(dp); }
+    }
+    const ops = planMoves(slots.map((_, p) => p), target);
+    return { ops, target };
+  }
+
+  // ---- pasting a list of songs --------------------------------------------------------------------------------
+  // Words that say nothing about which song it is.
+  const LIST_STOP = new Set(['the', 'a', 'an', 'of', 'to', 'in', 'on', 'and', 'feat', 'ft', 'featuring', 'with', 'x', 'from', 'vs', 'version', 'remastered', 'remaster']);
+  function listTokens(s) {
+    return String(s == null ? '' : s)
+      .normalize('NFKD').replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      .replace(/['’‘`´]/g, '')
+      .replace(/&/g, ' and ')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim().split(' ')
+      .filter((w) => w && !LIST_STOP.has(w));
+  }
+  const TIME_RE = /^\d{1,2}:\d{2}(?::\d{2})?$/;
+  const timeToSec = (t) => t.split(':').reduce((a, n) => a * 60 + Number(n), 0);
+
+  // Turns pasted text into entries: { raw, rating (1-5 or null), secs (or null), words (Set) }.
+  // Understands: "5 | Artist - Title - 0:03:32", "Artist - Title", table rows copied from a document (tab separated)
+  // and markdown table rows. Comment lines (#), section headings and header rows are skipped.
+  function parseList(text) {
+    const entries = [];
+    let ignored = 0;
+    for (const rawLine of String(text || '').split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      if (/^(#|\/\/)/.test(line) || /^[-=_*|:\s]+$/.test(line) || /^(part|act|set|block)\s*\d+\b/i.test(line) || /^starts\b.*\bsong\b/i.test(line) || line.length > 200) { ignored++; continue; }
+      let rating = null;
+      let secs = null;
+      let label;
+      let cells = null;
+      if (line.indexOf('\t') >= 0) cells = line.split('\t');
+      else if (/^\|.*\|$/.test(line)) cells = line.slice(1, -1).split('|');
+      if (cells) {
+        cells = cells.map((c) => c.trim()).filter(Boolean);
+        if (cells.length && /^[1-5]$/.test(cells[cells.length - 1])) rating = Number(cells.pop());
+        else if (cells.length > 1 && /^[1-5]$/.test(cells[0])) rating = Number(cells.shift());
+        const text2 = cells.filter((c) => !TIME_RE.test(c));
+        label = text2.slice(0, 2).join(' ');
+      } else {
+        label = line;
+        let m = label.match(/^\[?([1-5])\]?\s*\|\s*(.*)$/) || label.match(/^\[([1-5])\]\s+(.*)$/);
+        if (m) { rating = Number(m[1]); label = m[2]; }
+        m = label.match(/^(.*?)[\s\-–—|,;]*\b((?:\d{1,2}:)?\d{1,2}:\d{2})\s*$/);
+        if (m) { secs = timeToSec(m[2]); label = m[1]; }
+      }
+      const words = new Set(listTokens(label));
+      if (!words.size) { ignored++; continue; }
+      entries.push({ raw: line, label: label.trim(), rating, secs, words });
+    }
+    return { entries, ignored };
+  }
+
+  // Pairs entries with playlist songs. Every song is used at most once; the best pairs are settled first, so
+  // "Wake Me Up" by Avicii and "Wake Me Up Before You Go-Go" by Wham! cannot be mixed up. A pair only counts if the
+  // song's title (not just its artist) shares a word with the entry.
+  function matchList(entries, tracks) {
+    // Each track is compared twice: as Spotify names it, and with the bracketed extras and " - Remastered" style
+    // suffixes taken off, so that "Gimme! Gimme! Gimme!" finds "Gimme! Gimme! Gimme! (A Man After Midnight)".
+    const T = tracks.map((t) => {
+      const art = new Set(listTokens(t.artists));
+      const name = String(t.name == null ? '' : t.name);
+      const full = new Set(listTokens(name));
+      const coreName = name.replace(/\([^)]*\)|\[[^\]]*\]/g, ' ').replace(/\s+-\s+.*$/, '');
+      const core = new Set(listTokens(coreName));
+      const variants = [{ tit: full, all: new Set([...art, ...full]) }];
+      if (core.size && core.size < full.size) variants.push({ tit: core, all: new Set([...art, ...core]) });
+      return { id: t.id, variants, dur: t.dur };
+    });
+    const cand = [];
+    entries.forEach((e, i) => {
+      T.forEach((t, j) => {
+        let best = -1;
+        for (const v of t.variants) {
+          let inter = 0;
+          let titleHit = false;
+          for (const w of e.words) {
+            if (v.all.has(w)) { inter++; if (v.tit.has(w)) titleHit = true; }
+          }
+          if (!inter || !titleHit) continue;
+          const sc0 = inter / Math.sqrt(e.words.size * v.all.size);
+          if (sc0 > best) best = sc0;
+        }
+        if (best < 0) return;
+        let sc = best;
+        if (e.secs != null && t.dur) {
+          const d = Math.abs(e.secs - t.dur / 1000);
+          sc += d <= 2 ? 0.2 : d > 8 ? -0.1 : 0;
+        }
+        if (sc >= 0.5) cand.push([sc, i, j]);
+      });
+    });
+    cand.sort((a, b) => b[0] - a[0] || a[1] - b[1] || a[2] - b[2]);
+    const usedE = new Set();
+    const usedT = new Set();
+    const byEntry = new Map();
+    for (const [sc, i, j] of cand) {
+      if (usedE.has(i) || usedT.has(j)) continue;
+      usedE.add(i); usedT.add(j);
+      byEntry.set(i, { entry: entries[i], id: T[j].id, score: Math.min(1, sc), weak: sc < 0.7 });
+    }
+    const matches = [];
+    const notFound = [];
+    const sameSet = (a, b) => a.size === b.size && [...a].every((w) => b.has(w));
+    entries.forEach((e, i) => {
+      if (byEntry.has(i)) matches.push(byEntry.get(i));
+      else {
+        const twin = [...byEntry.values()].some((m) => sameSet(m.entry.words, e.words));
+        notFound.push({ entry: e, repeat: twin });
+      }
+    });
+    return { matches, notFound };
+  }
+
+  // The new order and ratings that a matched list asks for. Listed songs go first, in the order of the list; every
+  // other song follows in its current order. Songs that are not in the list can be given a rating (restRating) when
+  // they have none yet.
+  function planList(matches, currentOrder, currentRatings, restRating) {
+    const listed = [];
+    const seen = new Set();
+    const ratings = new Map();
+    for (const m of matches) {
+      if (seen.has(m.id)) continue;
+      seen.add(m.id);
+      listed.push(m.id);
+      if (m.entry.rating) ratings.set(m.id, m.entry.rating);
+    }
+    const rest = currentOrder.filter((id) => !seen.has(id));
+    if (restRating) for (const id of rest) if (!(currentRatings && currentRatings[id])) ratings.set(id, restRating);
+    return { order: listed.concat(rest), ratings, listed: listed.length, rest: rest.length };
+  }
+
+  const exported = { fmt, parseTime, trackWindow, isEligible, normRating, normInclude, fadeLevel, normTransition, TRANSITION_FLOOR, createEngine, clamp, MIN_WINDOW_MS, planMoves, planReorder, listTokens, parseList, matchList, planList };
+  if (typeof module !== 'undefined' && module.exports) module.exports = exported;
+  else root.SetEngine = exported;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+(() => {
+  'use strict';
+  const E = window.SetEngine;
+  const { fmt, parseTime, clamp } = E;
+  const $ = (s, r = document) => r.querySelector(s);
+  const esc = (s) =>
+    String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const svg = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
+  const ICON = {
+    play: svg('M8 5v14l11-7z'),
+    pause: svg('M6 5h4v14H6zM14 5h4v14h-4z'),
+    close: svg('M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z'),
+    handle: svg('M3 15h18v-2H3v2zm0 4h18v-2H3v2zm0-8h18V9H3v2zm0-6v2h18V5H3z'),
+    up: svg('M7 14l5-5 5 5z'),
+    down: svg('M7 10l5 5 5-5z'),
+    refresh: svg('M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z'),
+    gear: svg('M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z'),
+  };
+
+  // ---- storage (falls back to memory if the browser blocks it) --------------------------------
+  const mem = {};
+  const store = {
+    get(k, d = null) {
+      try {
+        const raw = localStorage.getItem(k);
+        if (raw != null) return JSON.parse(raw);
+      } catch (e) { /* fall through */ }
+      return k in mem ? mem[k] : d;
+    },
+    set(k, v) {
+      mem[k] = v;
+      try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* memory only */ }
+    },
+    del(k) {
+      delete mem[k];
+      try { localStorage.removeItem(k); } catch (e) { /* ignore */ }
+    },
+  };
+
+  // ---- state ----------------------------------------------------------------------------------
+  const DEFAULT_PREFS = { maxLen: 150000, fadeMs: 4000, transition: 'blend', include: 'except1', rehearsal: false, rehearsalLen: 12000, volume: null, deviceId: null };
+  const state = {
+    cfg: Object.assign({ clientId: '' }, store.get('wt.cfg', {})),
+    auth: store.get('wt.auth', null),
+    prefs: Object.assign({}, DEFAULT_PREFS, store.get('wt.prefs', {})),
+    me: null,
+    playlists: null,
+    playlist: store.get('wt.pl', null),
+    tracks: new Map(),
+    order: [],
+    customOrder: false,
+    filter: 'all',
+    expanded: null,
+    reorder: false,
+    view: 'setup',
+    sheet: false,
+    sheetView: '',      // '' = settings, 'import' = the paste-a-list screen
+    imp: { text: '', res: null, rest2: true, min3: true, done: null },
+    impUndo: null,      // what the page looked like before the last pasted list was applied
+    loading: false,
+    err: '',
+    devices: null,
+    runDevice: null,
+    confirm: '',
+    barNote: '',
+    logs: [],
+    hiddenDupes: 0,
+    skippedLocal: 0,
+    spotifyOrder: [],   // the shown songs in the order Spotify has them
+    rawKeys: '',        // fingerprint of every item in the playlist, to notice songs added or removed
+    truncated: false,
+    saving: null,       // { text, done, total } while the order is being written to Spotify
+    saveErr: '',
+    notice: '',
+  };
+  state.prefs.include = E.normInclude(state.prefs.include); // settings from the first version (notno, mustmaybe, must) still work
+  if (!('transition' in store.get('wt.prefs', {}))) {
+    // settings saved before smooth transitions existed: take the new default blend, and lengthen the old 3 s fade
+    state.prefs.transition = 'blend';
+    if (state.prefs.fadeMs === 3000) state.prefs.fadeMs = 4000;
+    store.set('wt.prefs', state.prefs);
+  }
+  state.prefs.transition = E.normTransition(state.prefs.transition);
+  state.view = state.auth ? (state.playlist ? 'main' : 'pick') : 'setup';
+
+  function log(m) {
+    const t = new Date();
+    state.logs.unshift(t.toTimeString().slice(0, 8) + '  ' + m);
+    if (state.logs.length > 80) state.logs.length = 80;
+    const el = $('#log');
+    if (el) el.innerHTML = state.logs.map((l) => `<li>${esc(l)}</li>`).join('');
+  }
+  const savePrefs = () => store.set('wt.prefs', state.prefs);
+
+  // ---- Spotify login (PKCE, no secret needed) ---------------------------------------------------
+  const SCOPES = 'playlist-read-private playlist-read-collaborative user-read-playback-state user-modify-playback-state';
+  const WRITE_SCOPES = 'playlist-modify-public playlist-modify-private'; // only asked for when the order is saved to Spotify
+  const hasWrite = () => !!(state.auth && /playlist-modify-private/.test(state.auth.scope || '') && /playlist-modify-public/.test(state.auth.scope || ''));
+  // Always the folder address ending in "/", whatever page file the site was opened from (index.html, "index (2).html" ...),
+  // so it is the same single address that is registered in the Spotify app.
+  const redirectUri = () => location.origin + location.pathname.replace(/[^/]*\.html?$/i, '').replace(/\/?$/, '/');
+  const RAND = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+  function randStr(n) {
+    const a = new Uint8Array(n);
+    crypto.getRandomValues(a);
+    return Array.from(a, (b) => RAND[b % RAND.length]).join('');
+  }
+  async function challengeFor(verifier) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+    let s = '';
+    new Uint8Array(digest).forEach((b) => (s += String.fromCharCode(b)));
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  async function login(write) {
+    const id = ($('#clientId') ? $('#clientId').value : state.cfg.clientId).trim();
+    if (!/^[A-Za-z0-9]{20,}$/.test(id)) {
+      state.err = 'That Client ID does not look right. It is a string of about 32 letters and numbers from your Spotify app page.';
+      render();
+      return;
+    }
+    if (!window.crypto || !crypto.subtle) {
+      state.err = 'This page must be opened from its https address so the login can work.';
+      render();
+      return;
+    }
+    if (write) state.cfg.wantWrite = true;
+    state.cfg.clientId = id;
+    store.set('wt.cfg', state.cfg);
+    const verifier = randStr(96);
+    const st = randStr(16);
+    store.set('wt.pkce', { verifier, state: st });
+    const u = new URL('https://accounts.spotify.com/authorize');
+    u.search = new URLSearchParams({
+      response_type: 'code', client_id: id, scope: write || state.cfg.wantWrite ? SCOPES + ' ' + WRITE_SCOPES : SCOPES, code_challenge_method: 'S256',
+      code_challenge: await challengeFor(verifier), redirect_uri: redirectUri(), state: st,
+    }).toString();
+    location.assign(u.toString());
+  }
+  async function handleRedirect() {
+    const q = new URLSearchParams(location.search);
+    if (!q.has('code') && !q.has('error')) return;
+    history.replaceState(null, '', location.pathname);
+    const pk = store.get('wt.pkce');
+    store.del('wt.pkce');
+    if (q.get('error') && store.get('wt.resume')) {
+      store.del('wt.resume');
+      state.notice = 'Spotify did not give permission, so the order was not saved to Spotify. It is still kept on this phone.';
+      return;
+    }
+    if (q.get('error')) throw new Error('Spotify did not complete the login (' + q.get('error') + '). Try Connect again.');
+    if (!pk || pk.state !== q.get('state')) throw new Error('The login could not be verified. Please tap Connect again.');
+    await tokenRequest({
+      grant_type: 'authorization_code', code: q.get('code'), redirect_uri: redirectUri(),
+      client_id: state.cfg.clientId, code_verifier: pk.verifier,
+    });
+    state.cfg.okRedirect = redirectUri(); // remembered so a later address mismatch can be pointed out
+    store.set('wt.cfg', state.cfg);
+  }
+  async function tokenRequest(body) {
+    const r = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(body),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const e = new Error(j.error_description || j.error || 'Spotify login failed');
+      e.status = r.status;
+      e.authFailed = true;
+      throw e;
+    }
+    state.auth = {
+      access: j.access_token,
+      refresh: j.refresh_token || (state.auth && state.auth.refresh),
+      exp: Date.now() + (j.expires_in || 3600) * 1000,
+      scope: j.scope || (state.auth && state.auth.scope) || '',
+    };
+    store.set('wt.auth', state.auth);
+  }
+  let refreshing = null;
+  function refresh() {
+    if (!refreshing) {
+      refreshing = tokenRequest({ grant_type: 'refresh_token', refresh_token: state.auth.refresh, client_id: state.cfg.clientId })
+        .catch((e) => {
+          if (e.authFailed) logout('Your Spotify login ran out. Tap Connect to sign in again.');
+          throw e;
+        })
+        .finally(() => { refreshing = null; });
+    }
+    return refreshing;
+  }
+  async function ensureToken() {
+    if (!state.auth) throw Object.assign(new Error('Not signed in'), { authFailed: true });
+    if (Date.now() > state.auth.exp - 90000) await refresh();
+    return state.auth.access;
+  }
+  function logout(message) {
+    state.auth = null;
+    state.me = null;
+    state.playlists = null;
+    state.confirm = '';
+    state.sheet = false;
+    $('#sheet').hidden = true;
+    store.del('wt.auth');
+    engine.stop().catch(() => {});
+    state.view = 'setup';
+    state.err = message || '';
+    render();
+  }
+
+  // ---- Spotify API ------------------------------------------------------------------------------
+  async function spot(method, path, body, attempt = 0) {
+    const token = await ensureToken();
+    let r;
+    try {
+      r = await fetch('https://api.spotify.com/v1' + path, {
+        method,
+        headers: Object.assign({ Authorization: 'Bearer ' + token }, body ? { 'Content-Type': 'application/json' } : {}),
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (e) {
+      const err = new Error('No connection to Spotify');
+      err.userMessage = 'No connection to Spotify. Check the phone signal or Wi-Fi.';
+      throw err;
+    }
+    if (r.status === 401 && attempt === 0) {
+      await refresh();
+      return spot(method, path, body, 1);
+    }
+    if (r.status === 429 && attempt < 2) {
+      await sleep(Math.min(10, Number(r.headers.get('Retry-After')) || 2) * 1000);
+      return spot(method, path, body, attempt + 1);
+    }
+    if (r.status === 204) return null;
+    const text = await r.text();
+    let j = null;
+    try { j = text ? JSON.parse(text) : null; } catch (e) { /* not JSON */ }
+    if (!r.ok) {
+      const m = j && j.error && (j.error.message || (typeof j.error === 'string' ? j.error : ''));
+      const reason = j && j.error && j.error.reason;
+      const err = new Error(m || 'Spotify error ' + r.status);
+      err.status = r.status;
+      err.reason = reason;
+      if (r.status === 404 && /player|device/i.test(path + ' ' + (m || '') + ' ' + (reason || '')) && path.includes('/me/player')) {
+        err.userMessage = 'Spotify has no active device. Open the Spotify app on this phone, play any song for a second, then press Play again.';
+      } else if (r.status === 403 && reason === 'PREMIUM_REQUIRED') {
+        err.userMessage = 'Spotify says playback control needs Premium on the account you signed in with.';
+      } else if (r.status === 429) {
+        err.userMessage = 'Spotify asked us to slow down. Wait a few seconds and try again.';
+      }
+      throw err;
+    }
+    return j;
+  }
+  const deviceQuery = () => {
+    const id = state.prefs.deviceId || state.runDevice;
+    return id ? 'device_id=' + encodeURIComponent(id) : '';
+  };
+  const withDev = (path, extra) => {
+    const q = [extra, deviceQuery()].filter(Boolean).join('&');
+    return path + (q ? '?' + q : '');
+  };
+  const playerApi = {
+    play: (uri, pos) => spot('PUT', withDev('/me/player/play'), { uris: [uri], position_ms: Math.round(pos) }),
+    resume: () => spot('PUT', withDev('/me/player/play')),
+    pause: () => spot('PUT', withDev('/me/player/pause')),
+    seek: (ms) => spot('PUT', withDev('/me/player/seek', 'position_ms=' + Math.max(0, Math.round(ms)))),
+    volume: (v) => spot('PUT', withDev('/me/player/volume', 'volume_percent=' + clamp(Math.round(v), 0, 100))),
+    state: () => spot('GET', '/me/player'),
+  };
+
+  // ---- playlist data -----------------------------------------------------------------------------
+  async function loadMe() {
+    state.me = await spot('GET', '/me');
+  }
+  async function loadPlaylists() {
+    const out = [];
+    for (let offset = 0; offset < 200; offset += 50) {
+      const pg = await spot('GET', `/me/playlists?limit=50&offset=${offset}`);
+      out.push(...((pg && pg.items) || []));
+      if (!pg || !pg.next) break;
+    }
+    state.playlists = out.filter(Boolean).map((p) => ({
+      id: p.id,
+      name: p.name,
+      count: p.items && p.items.total != null ? p.items.total : p.tracks && p.tracks.total != null ? p.tracks.total : null,
+      readable: !!(p.collaborative || (p.owner && state.me && p.owner.id === state.me.id)),
+    }));
+    render();
+  }
+  const parsePlaylistId = (s) => {
+    s = String(s || '').trim();
+    const m = s.match(/playlist[/:]([A-Za-z0-9]{10,})/) || s.match(/^([A-Za-z0-9]{22})$/);
+    return m ? m[1] : null;
+  };
+
+  let arrCache = null;
+  const orderedTracks = () => arrCache || (arrCache = state.order.map((id) => state.tracks.get(id)).filter(Boolean));
+
+  // Every item of a playlist in Spotify's order. `truncated` means the playlist is longer than this page reads.
+  async function fetchItems(id) {
+    const raw = [];
+    let total = Infinity;
+    for (let offset = 0; offset < total && offset < 1000; offset += 50) {
+      const pg = await spot('GET', `/playlists/${id}/items?limit=50&offset=${offset}&additional_types=track`);
+      total = pg && pg.total != null ? pg.total : 0;
+      if (!pg || !pg.items || !pg.items.length) break;
+      raw.push(...pg.items);
+    }
+    return { raw, truncated: total > raw.length };
+  }
+  // Sorts the raw items into songs this page can play and items it leaves out. `slots` has one entry per
+  // playlist position: the song's id, or null for a hidden item (local file, podcast, repeated song).
+  function classify(raw) {
+    const seen = new Set();
+    const list = [];
+    const slots = [];
+    const dupAt = {};
+    let dupes = 0;
+    let skipped = 0;
+    for (const e of raw) {
+      const t = e && (e.item || e.track);
+      if (!t || t.type !== 'track') { skipped++; slots.push(null); continue; }
+      if (e.is_local || !t.id || !t.uri) { skipped++; slots.push(null); continue; }
+      if (seen.has(t.id)) { dupes++; dupAt[slots.length] = t.id; slots.push(null); continue; }
+      seen.add(t.id);
+      slots.push(t.id);
+      const imgs = (t.album && t.album.images) || [];
+      const small = imgs.length ? imgs[imgs.length - 1].url : '';
+      list.push({
+        id: t.id, uri: t.uri, name: t.name || 'Untitled', dur: t.duration_ms || 0, art: small,
+        artists: (t.artists || []).map((a) => a.name).join(', '), start: null, end: null, len: null, rating: 0,
+      });
+    }
+    const keys = raw.map((e) => { const t = e && (e.item || e.track); return (t && (t.uri || t.id)) || '?'; }).sort().join('\n');
+    return { list, slots, dupAt, dupes, skipped, keys };
+  }
+
+  let openSeq = 0;
+  async function openPlaylist(id, name) {
+    if (state.saving) { toast('Wait until the order has finished saving to Spotify.'); return; }
+    saveNow(); // keep ratings, trims and order of the playlist being left
+    const seq = ++openSeq;
+    state.playlist = { id, name: name || (state.playlist && state.playlist.id === id ? state.playlist.name : 'Playlist') };
+    state.loading = true;
+    state.err = '';
+    state.view = 'main';
+    state.tracks = new Map();
+    state.order = [];
+    arrCache = null;
+    state.expanded = null;
+    state.reorder = false;
+    state.filter = 'all';
+    state.confirm = '';
+    state.saveErr = '';
+    render();
+    try {
+      if (!name) {
+        const p = await spot('GET', `/playlists/${id}?fields=name`);
+        if (seq !== openSeq) return;
+        if (p && p.name) state.playlist.name = p.name;
+      }
+      const got = await fetchItems(id);
+      if (seq !== openSeq) return; // another playlist was chosen while this one was loading
+      const c = classify(got.raw);
+      const list = c.list;
+      state.hiddenDupes = c.dupes;
+      state.skippedLocal = c.skipped;
+      state.rawKeys = c.keys;
+      state.truncated = got.truncated;
+      const saved = store.get('wt.d.' + id, { customOrder: false, order: [], t: {} });
+      for (const t of list) {
+        const s = saved.t && saved.t[t.id];
+        if (s) { t.start = s.s == null ? null : s.s; t.end = s.e == null ? null : s.e; t.len = s.l == null ? null : s.l; t.rating = E.normRating(s.r); }
+        state.tracks.set(t.id, t);
+      }
+      const spotifyIds = list.map((t) => t.id);
+      state.spotifyOrder = spotifyIds.slice();
+      state.customOrder = !!saved.customOrder;
+      if (state.customOrder) {
+        const inSet = new Set(spotifyIds);
+        const kept = (saved.order || []).filter((x) => inSet.has(x));
+        const keptSet = new Set(kept);
+        state.order = kept.concat(spotifyIds.filter((x) => !keptSet.has(x)));
+      } else {
+        state.order = spotifyIds;
+      }
+      arrCache = null;
+      store.set('wt.pl', state.playlist);
+      log(`Loaded "${state.playlist.name}" with ${list.length} songs.`);
+    } catch (e) {
+      if (seq !== openSeq) return;
+      state.err =
+        e.status === 403 || e.status === 404
+          ? 'Spotify only lets this page read playlists you created or collaborate on. Copy the songs into a playlist of your own, then choose it here.'
+          : e.userMessage || e.message;
+      if (e.authFailed) return;
+    }
+    state.loading = false;
+    render();
+  }
+
+  function persist() {
+    clearTimeout(persist.t);
+    persist.t = setTimeout(saveNow, 250);
+  }
+  function saveNow() {
+    clearTimeout(persist.t);
+    if (!state.playlist || state.loading || !state.tracks.size) return;
+    const t = {};
+    for (const x of state.tracks.values()) if (x.start != null || x.end != null || x.len != null || x.rating) t[x.id] = { s: x.start, e: x.end, l: x.len, r: x.rating || 0 };
+    store.set('wt.d.' + state.playlist.id, { customOrder: state.customOrder, order: state.customOrder ? state.order : [], t });
+  }
+
+  // ---- engine wiring ------------------------------------------------------------------------------
+  let wake = null;
+  async function keepAwake(on) {
+    try {
+      if (on && !wake && 'wakeLock' in navigator && !document.hidden) {
+        wake = await navigator.wakeLock.request('screen');
+        wake.addEventListener('release', () => { wake = null; });
+      } else if (!on && wake) {
+        const w = wake;
+        wake = null;
+        await w.release();
+      }
+    } catch (e) { wake = null; }
+  }
+  const engine = E.createEngine({
+    api: playerApi,
+    now: () => Date.now(),
+    getTracks: orderedTracks,
+    getPrefs: () => state.prefs,
+    log,
+    onChange: (s) => {
+      keepAwake(s.status === 'playing' || s.status === 'paused' || s.status === 'starting');
+      if (s.status === 'playing') state.barNote = '';
+      syncBar();
+    },
+  });
+
+  async function ensureDevice() {
+    const d = await spot('GET', '/me/player/devices');
+    const list = (d && d.devices) || [];
+    state.devices = list;
+    state.runDevice = null;
+    if (state.prefs.deviceId) {
+      if (list.some((x) => x.id === state.prefs.deviceId)) return true;
+      log('The chosen device is offline, so the active one is used.');
+      state.prefs.deviceId = null;
+      savePrefs();
+    }
+    if (list.some((x) => x.is_active)) return true;
+    const pick = list.find((x) => /smartphone/i.test(x.type)) || (list.length === 1 ? list[0] : null);
+    if (pick) { state.runDevice = pick.id; return true; }
+    return false;
+  }
+  async function runFrom(id, opts) {
+    state.barNote = '';
+    try {
+      if (!(await ensureDevice())) {
+        state.barNote = 'Spotify cannot see a device. Open the Spotify app on this phone, play any song for a second, then press Play again.';
+        syncBar();
+        return;
+      }
+    } catch (e) {
+      state.barNote = e.userMessage || e.message;
+      syncBar();
+      return;
+    }
+    await engine.start(id, opts);
+  }
+
+  // ---- track edits -----------------------------------------------------------------------------------
+  function setField(id, f, ms) {
+    const t = state.tracks.get(id);
+    if (!t) return;
+    const top = Math.max(0, t.dur - 600);
+    if (f === 'start') {
+      t.start = clamp(Math.round(ms), 0, Math.max(0, t.dur - 10000));
+      if (t.end != null && t.end < t.start + E.MIN_WINDOW_MS) t.end = Math.min(top, t.start + E.MIN_WINDOW_MS);
+    } else {
+      t.end = clamp(Math.round(ms), (t.start || 0) + E.MIN_WINDOW_MS, top);
+      t.len = null; // an end time set by hand replaces a chosen length
+    }
+    persist();
+    patchRow(id);
+  }
+  // How long this song is set to play, ignoring rehearsal mode.
+  function chosenLen(t) {
+    const start = t.start || 0;
+    const raw = t.end != null ? t.end - start : t.len != null ? t.len : state.prefs.maxLen;
+    return Math.max(E.MIN_WINDOW_MS, Math.min(raw, Math.max(E.MIN_WINDOW_MS, t.dur - start)));
+  }
+  function setLen(id, ms) {
+    const t = state.tracks.get(id);
+    if (!t) return;
+    const room = Math.max(E.MIN_WINDOW_MS, t.dur - (t.start || 0));
+    t.len = clamp(Math.round(ms), E.MIN_WINDOW_MS, room);
+    t.end = null; // the length now decides where it stops, whatever the start is
+    persist();
+    patchRow(id);
+  }
+  function setRating(id, v) {
+    const t = state.tracks.get(id);
+    if (!t) return;
+    t.rating = t.rating === v ? 0 : v;
+    persist();
+    patchRow(id);
+  }
+  function moveTo(id, pos) {
+    const i = state.order.indexOf(id);
+    if (i < 0) return;
+    const j = clamp(pos - 1, 0, state.order.length - 1);
+    if (i === j) return;
+    state.order.splice(i, 1);
+    state.order.splice(j, 0, id);
+    state.customOrder = true;
+    arrCache = null;
+    persist();
+    render({ keepScroll: true });
+    const row = rowEl(id);
+    if (row) row.scrollIntoView({ block: 'nearest' });
+  }
+  function markHere(id, which) {
+    const s = engine.snapshot();
+    if (s.trackId !== id || (s.status !== 'playing' && s.status !== 'paused')) {
+      toast('Play this song first, then tap while it is playing.');
+      return;
+    }
+    const secs = which === 'start' ? Math.floor(s.pos / 1000) : Math.ceil(s.pos / 1000);
+    setField(id, which, secs * 1000);
+    toast(`${which === 'start' ? 'Start' : 'End'} set to ${fmt(secs * 1000)}`);
+  }
+
+  // ---- rendering ---------------------------------------------------------------------------------------
+  const rowEl = (id) => document.querySelector(`.row[data-id="${CSS.escape(id)}"]`);
+  const matchesFilter = (t) => state.filter === 'all' || (state.filter === 'none' ? !t.rating : t.rating === Number(state.filter));
+  const fmtLong = (ms) => {
+    if (ms < 60000) return `${Math.round(ms / 1000)} sec`;
+    const m = Math.round(ms / 60000);
+    return m >= 60 ? `${Math.floor(m / 60)} hr ${m % 60} min` : `${m} min`;
+  };
+  function totals() {
+    const c = { all: 0, 5: 0, 4: 0, 3: 0, 2: 0, 1: 0, none: 0 };
+    let n = 0;
+    let ms = 0;
+    for (const t of orderedTracks()) {
+      c.all++;
+      c[t.rating || 'none']++;
+      if (E.isEligible(t, state.prefs.include)) { n++; ms += E.trackWindow(t, state.prefs).playMs; }
+    }
+    return { c, n, ms };
+  }
+
+  function setupHTML() {
+    const secure = location.protocol === 'https:';
+    return `<main class="setup">
+      <p class="eyebrow">Set Trimmer</p>
+      <h1>Cut every song to the length you want, then let the playlist run.</h1>
+      <p class="lede">Plays through the Spotify app on this phone. Needs Spotify Premium.</p>
+      ${secure ? '' : '<p class="warn">Open this page from its https web address, not as a file on the phone. Spotify will not log in otherwise.</p>'}
+      <ol class="steps">
+        <li><h2>Register this Redirect URI</h2>
+          <p>When you create your app on the Spotify developer dashboard, add exactly this address as a Redirect URI:</p>
+          <div class="copyrow"><input id="ru" readonly value="${esc(redirectUri())}" aria-label="Redirect URI"><button class="btn" data-act="copy-ru">Copy</button></div></li>
+        <li><h2>Paste the Client ID</h2>
+          <p>Copy it from the same Spotify app page.</p>
+          <input class="field" id="clientId" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Client ID" value="${esc(state.cfg.clientId)}" aria-label="Client ID"></li>
+        <li><h2>Connect</h2>
+          <button class="btn primary" data-act="login">Connect Spotify</button>
+          ${state.err ? `<p class="err" role="alert">${esc(state.err)}</p>` : ''}</li>
+      </ol></main>`;
+  }
+
+  const ratedCount = (id) => {
+    const d = store.get('wt.d.' + id, null);
+    return d && d.t ? Object.values(d.t).filter((x) => x && x.r).length : 0;
+  };
+  function pickHTML() {
+    const pls = state.playlists;
+    const cur = state.playlist ? state.playlist.id : '';
+    const canBack = !!(cur && state.tracks.size && !state.loading);
+    const item = (p) => {
+      const isCur = p.id === cur;
+      const rated = ratedCount(p.id);
+      const info = p.readable ? [p.count != null ? p.count + (p.count === 1 ? ' song' : ' songs') : '', rated ? rated + ' rated' : ''].filter(Boolean).join(' · ') : 'songs hidden';
+      return `<li data-name="${esc(p.name)}"><button class="pl-item ${p.readable ? '' : 'off'} ${isCur ? 'cur' : ''}" data-act="choose" data-id="${esc(p.id)}" data-name="${esc(p.name)}" ${p.readable ? '' : 'aria-disabled="true"'} ${isCur ? 'aria-current="true"' : ''}>
+          <span class="n">${esc(p.name)}</span><span class="c">${isCur ? '<b class="cur-tag">Open now</b>' : ''}${esc(info)}</span></button></li>`;
+    };
+    return `<main class="pick">
+      <div class="top-row">${canBack ? '<button class="btn small" data-act="pick-back">← Back</button>' : '<p class="eyebrow">Set Trimmer</p>'}
+        <div class="top-actions"><button class="btn small" data-act="logout-ask">Log out</button></div></div>
+      <h1>${cur ? 'Choose a playlist' : 'Choose the wedding playlist'}</h1>
+      <p class="hint">Spotify only shares the songs of playlists you created or collaborate on. Ratings, trims and order are kept separately for each playlist on this phone.</p>
+      ${state.err ? `<p class="err" role="alert">${esc(state.err)}</p>` : ''}
+      ${pls == null && !state.err ? '<p class="hint">Loading your playlists…</p>' : ''}
+      ${pls && pls.length > 6 ? '<input class="field" id="plFilter" type="search" placeholder="Search your playlists" aria-label="Search your playlists" autocomplete="off" autocapitalize="off" spellcheck="false">' : ''}
+      <ul class="pl-list">${(pls || []).map(item).join('')}</ul>
+      <p class="hint" id="pl-none" hidden>No playlist matches that search.</p>
+      <div class="btn-row"><button class="btn small" data-act="pl-refresh">Refresh list</button></div>
+      <p class="hint">Made a new playlist in Spotify? Refresh the list. Or paste a playlist link:</p>
+      <div class="copyrow"><input class="field" id="plLink" placeholder="https://open.spotify.com/playlist/…" aria-label="Playlist link" autocapitalize="off" spellcheck="false">
+        <button class="btn" data-act="paste-pl">Open</button></div>
+    </main>`;
+  }
+  function filterPlaylists(q) {
+    q = String(q || '').trim().toLowerCase();
+    let shown = 0;
+    document.querySelectorAll('.pl-list li').forEach((li) => {
+      const hit = !q || (li.dataset.name || '').toLowerCase().includes(q);
+      li.hidden = !hit;
+      if (hit) shown++;
+    });
+    const none = $('#pl-none');
+    if (none) none.hidden = shown > 0;
+  }
+  const isActive = () => { const st = engine.snapshot().status; return st === 'playing' || st === 'paused' || st === 'starting'; };
+  async function goPick() {
+    if (state.saving) { toast('Wait until the order has finished saving to Spotify.'); return; }
+    saveNow();
+    closeSheet();
+    state.confirm = '';
+    state.view = 'pick';
+    state.err = '';
+    window.scrollTo(0, 0);
+    render();
+    if (!state.playlists) {
+      try { await loadPlaylists(); } catch (err) { state.err = err.userMessage || err.message; render(); }
+    }
+  }
+
+  function chipsHTML() {
+    const { c } = totals();
+    const chip = (f, label, cls = '') => `<button class="chip ${cls}" data-act="filter" data-f="${f}" aria-pressed="${state.filter === f}" aria-label="${f === 'all' ? 'All songs' : f === 'none' ? 'Unrated songs' : 'Rated ' + f}, ${c[f]}">${label}<span class="n">${c[f]}</span></button>`;
+    return chip('all', 'All') + [5, 4, 3, 2, 1].map((n) => chip(String(n), String(n), 'r' + n)).join('') + chip('none', 'Unrated');
+  }
+  function summaryHTML() {
+    const { n, ms } = totals();
+    const extra = state.prefs.rehearsal ? ' · <b>rehearsal mode</b>' : '';
+    return `Autoplay: <b>${n}</b> songs · <b>${fmtLong(ms)}</b>${extra}`;
+  }
+  function updateHeader() {
+    const s = $('#sum');
+    const c = $('#chips');
+    if (s) s.innerHTML = summaryHTML();
+    if (c) c.innerHTML = chipsHTML();
+  }
+
+  function segHTML(t) {
+    const names = { 1: 'no', 2: 'probably not', 3: 'maybe', 4: 'want', 5: 'must play' };
+    const b = (v) => `<button role="radio" aria-checked="${t.rating === v}" aria-label="Rate ${v}, ${names[v]}" class="seg-b r${v} ${t.rating === v ? 'on' : ''}" data-act="rate" data-v="${v}">${v}</button>`;
+    return `<div class="seg" role="radiogroup" aria-label="Rating for ${esc(t.name)}, 1 is no, 5 is must play">${[1, 2, 3, 4, 5].map(b).join('')}</div>`;
+  }
+  const isCustom = (t) => t.len != null || t.end != null;
+  const endNote = (t) => {
+    const how = t.end != null ? 'End is set by hand, so it stops there.'
+      : t.len != null ? `Plays for ${fmt(t.len)} from wherever it starts.`
+      : `Plays for the default ${fmt(state.prefs.maxLen)} from wherever it starts.`;
+    return `${how} Song is ${fmt(t.dur)} long.${state.prefs.rehearsal ? ' Rehearsal mode is on, so every song is shortened for now.' : ''}`;
+  };
+  const lenLabel = (t, w, el) => `plays ${fmt(w.end - w.start)}${isCustom(t) ? ' · custom' : ''}${w.naturalEnd ? ' · to the end' : ''}${el ? '' : ' · skipped'}`;
+  function editorHTML(t, w) {
+    const pos = state.order.indexOf(t.id) + 1;
+    const stepper = (f, label, val, d) => `<div class="ed-row"><label for="ed-${f}-${esc(t.id)}">${label}</label>
+        <div class="stepper"><button data-act="nudge" data-f="${f}" data-d="${-d}" aria-label="${label} ${d / 1000} seconds earlier">−${d / 1000}s</button>
+        <input id="ed-${f}-${esc(t.id)}" data-change="${f}" inputmode="numeric" autocomplete="off" value="${fmt(val)}">
+        <button data-act="nudge" data-f="${f}" data-d="${d}" aria-label="${label} ${d / 1000} seconds later">+${d / 1000}s</button></div>
+        ${f === 'end' ? `<button class="link-btn" data-act="autoend" ${t.end == null ? 'hidden' : ''}>Auto</button>` : '<span></span>'}</div>`;
+    const lenRow = `<div class="ed-row"><label for="ed-len-${esc(t.id)}">Plays for</label>
+        <div class="stepper"><button data-act="nudge-len" data-d="-15000" aria-label="Play 15 seconds less">−15s</button>
+        <input id="ed-len-${esc(t.id)}" data-change="len" inputmode="numeric" autocomplete="off" value="${fmt(chosenLen(t))}">
+        <button data-act="nudge-len" data-d="15000" aria-label="Play 15 seconds more">+15s</button></div>
+        <button class="link-btn" data-act="default-len" ${isCustom(t) ? '' : 'hidden'}>Default</button></div>`;
+    return `<div class="editor">
+      ${lenRow}
+      ${stepper('start', 'Start', w.start, 5000)}
+      ${stepper('end', 'End', w.end, 5000)}
+      <p class="ed-note" data-role="endnote">${endNote(t)}</p>
+      <div class="ed-actions">
+        <button class="btn small" data-act="hear-start">Hear the start</button>
+        <button class="btn small" data-act="hear-end">Hear the ending</button>
+        <button class="btn small" data-act="mark-start">Start here</button>
+        <button class="btn small" data-act="mark-end">End here</button>
+      </div>
+      <p class="ed-note">Start here and End here use the playing position, so tap them while the song plays.</p>
+      <div class="ed-row"><label for="ed-ord-${esc(t.id)}">Order</label>
+        <div class="stepper"><button data-act="move" data-d="-1" aria-label="Move earlier">▲</button>
+        <input id="ed-ord-${esc(t.id)}" data-change="order" inputmode="numeric" autocomplete="off" value="${pos}">
+        <button data-act="move" data-d="1" aria-label="Move later">▼</button></div>
+        <span></span></div>
+      <div class="ed-actions"><button class="btn small" data-act="reset-trim">Reset trim</button></div>
+    </div>`;
+  }
+  function rowHTML(t) {
+    const w = E.trackWindow(t, state.prefs);
+    const el = E.isEligible(t, state.prefs.include);
+    const open = state.expanded === t.id;
+    const left = t.dur ? (w.start / t.dur) * 100 : 0;
+    const width = t.dur ? ((w.end - w.start) / t.dur) * 100 : 0;
+    return `<li class="row ${el ? '' : 'skipped'} ${open ? 'open' : ''}" data-id="${esc(t.id)}">
+      <div class="r-main">
+        <span class="r-idx">${state.order.indexOf(t.id) + 1}</span>
+        ${t.art ? `<img class="art" src="${esc(t.art)}" alt="" width="48" height="48" loading="lazy">` : '<div class="art"></div>'}
+        <button class="r-text" data-act="toggle" aria-expanded="${open}"><span class="r-title">${esc(t.name)}</span><span class="r-meta">${esc(t.artists)} · ${fmt(t.dur)}</span></button>
+        <button class="play-btn" data-act="playfrom" data-ico="play" aria-label="Play from ${esc(t.name)}">${ICON.play}</button>
+      </div>
+      <div class="win-hit" data-scrub="${esc(t.id)}" role="button" aria-label="Hear ${esc(t.name)} from a chosen spot. Tap or drag along the bar."><div class="win"><i class="win-fill" style="left:${left.toFixed(2)}%;width:${width.toFixed(2)}%"></i><b class="ph"></b></div></div>
+      <div class="r-times"><span>${fmt(w.start)} → ${fmt(w.end)}</span><button class="len-btn ${isCustom(t) ? 'custom' : ''}" data-act="toggle" aria-label="Change how long this song plays">${lenLabel(t, w, el)}</button></div>
+      ${segHTML(t)}
+      ${open ? editorHTML(t, w) : ''}
+    </li>`;
+  }
+
+  function reorderRowHTML(t) {
+    const w = E.trackWindow(t, state.prefs);
+    const el = E.isEligible(t, state.prefs.include);
+    const n = state.order.indexOf(t.id) + 1;
+    return `<li class="row rrow ${el ? '' : 'skipped'}" data-id="${esc(t.id)}">
+      <button class="handle" data-handle aria-label="Drag ${esc(t.name)} to a new position">${ICON.handle}</button>
+      <span class="r-idx">${n}</span>
+      <div class="rr-text"><span class="r-title">${esc(t.name)}</span><span class="r-meta">${esc(t.artists)} · plays ${fmt(w.playMs)}</span></div>
+      <span class="rate-badge ${t.rating ? 'r' + t.rating : ''}" aria-label="${t.rating ? 'Rated ' + t.rating : 'Not rated'}">${t.rating || '–'}</span>
+      <button class="mv" data-act="rmove" data-d="-1" aria-label="Move ${esc(t.name)} up">${ICON.up}</button>
+      <button class="mv" data-act="rmove" data-d="1" aria-label="Move ${esc(t.name)} down">${ICON.down}</button>
+    </li>`;
+  }
+
+  function mainHTML() {
+    const name = state.playlist ? state.playlist.name : '';
+    const head = `<header>
+      <div class="top-row"><p class="eyebrow">Set Trimmer</p>
+        <div class="top-actions">${state.reorder
+          ? '<button class="btn small primary" data-act="reorder-done">Done</button>'
+          : `<button class="btn small" data-act="reorder">Reorder</button><button class="icon-btn" data-act="refresh" aria-label="Reload the playlist from Spotify">${ICON.refresh}</button>
+        <button class="icon-btn" data-act="settings" aria-label="Settings">${ICON.gear}</button>`}</div></div>
+      <div class="name-row"><h1 class="pl-name">${esc(name)}</h1>${state.reorder ? '' : '<button class="btn small" data-act="change-playlist" aria-label="Switch to another playlist">Playlists</button>'}</div>
+      ${state.confirm === 'switch' ? '<div class="save-panel"><p class="sub">A set is playing. Switching playlists stops it.</p><div class="btn-row"><button class="btn small primary" data-act="switch-yes">Stop and switch</button><button class="btn small" data-act="switch-no">Keep playing</button></div></div>' : ''}`;
+    if (state.loading) return head + '<p class="sum">Loading songs…</p></header>';
+    if (state.err) {
+      return head + `<p class="err" role="alert">${esc(state.err)}</p>
+        <div class="btn-row"><button class="btn" data-act="refresh">Try again</button><button class="btn" data-act="change-playlist">Choose another playlist</button></div></header>`;
+    }
+    if (state.reorder) {
+      return `${head}<p class="sum" id="sum">${summaryHTML()}</p>
+        <p class="reorder-note">Hold the <b>≡</b> handle and drag a song to a new spot, or tap the arrows. The song at the top plays first.</p>
+        <div class="btn-row paste-row"><button class="btn small" data-act="imp-open">Paste a list…</button></div></header>
+        <div id="savepanel" class="save-panel sticky">${savePanelHTML()}</div>
+        <ol class="list reorder">${orderedTracks().map(reorderRowHTML).join('')}</ol>`;
+    }
+    const rows = orderedTracks().filter(matchesFilter);
+    const notes = [];
+    if (state.skippedLocal) notes.push(`${state.skippedLocal} item${state.skippedLocal > 1 ? 's' : ''} (local files or podcasts) cannot be played from here.`);
+    if (state.hiddenDupes) notes.push(`${state.hiddenDupes} repeated song${state.hiddenDupes > 1 ? 's' : ''} hidden.`);
+    return `${head}<p class="sum" id="sum">${summaryHTML()}</p><p class="hint legend">Rate every song 1 to 5: <b>5</b> must play, <b>3</b> maybe, <b>1</b> no. Tap or drag a song's bar to hear it from that spot. Tap “plays …” to change how long that song plays.</p>${notes.length ? `<p class="hint">${esc(notes.join(' '))}</p>` : ''}</header>
+      <div id="savepanel" class="save-panel">${savePanelHTML()}</div>
+      <nav class="chips" id="chips" aria-label="Filter songs">${chipsHTML()}</nav>
+      ${rows.length ? `<ol class="list">${rows.map(rowHTML).join('')}</ol>` : `<p class="empty">${state.tracks.size ? 'No songs match this filter.' : 'This playlist has no playable songs.'}</p>`}`;
+  }
+
+  let shownRow = null;
+  function render(o = {}) {
+    const y = window.scrollY;
+    const app = $('#app');
+    app.innerHTML = state.view === 'setup' ? setupHTML() : state.view === 'pick' ? pickHTML() : mainHTML();
+    shownRow = null;
+    if (o.keepScroll) window.scrollTo(0, y);
+    syncBar();
+  }
+  // Update a row in place. Replacing the row would drop focus and can swallow a tap that is
+  // already in progress (for example typing a time, then tapping +5s).
+  function patchRow(id) {
+    const li = rowEl(id);
+    const t = state.tracks.get(id);
+    if (!li || !t) return;
+    if (!matchesFilter(t)) {
+      li.remove();
+      if (state.expanded === id) state.expanded = null;
+      updateHeader();
+      syncBar();
+      return;
+    }
+    const w = E.trackWindow(t, state.prefs);
+    const el = E.isEligible(t, state.prefs.include);
+    li.classList.toggle('skipped', !el);
+    const fill = $('.win-fill', li);
+    fill.style.left = ((t.dur ? w.start / t.dur : 0) * 100).toFixed(2) + '%';
+    fill.style.width = ((t.dur ? (w.end - w.start) / t.dur : 0) * 100).toFixed(2) + '%';
+    const spans = $('.r-times', li).children;
+    spans[0].textContent = `${fmt(w.start)} → ${fmt(w.end)}`;
+    spans[1].textContent = lenLabel(t, w, el);
+    spans[1].classList.toggle('custom', isCustom(t));
+    li.querySelectorAll('.seg-b').forEach((b) => {
+      const on = t.rating === Number(b.dataset.v);
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', String(on));
+    });
+    const ed = $('.editor', li);
+    if (ed) {
+      $('[data-change="start"]', ed).value = fmt(w.start);
+      $('[data-change="end"]', ed).value = fmt(w.end);
+      $('[data-change="len"]', ed).value = fmt(chosenLen(t));
+      $('[data-act="default-len"]', ed).hidden = !isCustom(t);
+      $('[data-act="autoend"]', ed).hidden = t.end == null;
+      $('[data-role="endnote"]', ed).textContent = endNote(t);
+    }
+    updateHeader();
+    syncBar();
+  }
+  function setExpanded(id) {
+    const prev = state.expanded;
+    state.expanded = prev === id ? null : id;
+    const mark = (li, open) => {
+      li.classList.toggle('open', open);
+      const b = $('[data-act="toggle"]', li);
+      if (b) b.setAttribute('aria-expanded', String(open));
+    };
+    if (prev) {
+      const li = rowEl(prev);
+      if (li) { const ed = $('.editor', li); if (ed) ed.remove(); mark(li, false); }
+    }
+    if (state.expanded) {
+      const li = rowEl(state.expanded);
+      const t = state.tracks.get(state.expanded);
+      if (li && t) {
+        li.insertAdjacentHTML('beforeend', editorHTML(t, E.trackWindow(t, state.prefs)));
+        mark(li, true);
+        li.scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }
+
+  // ---- player bar ---------------------------------------------------------------------------------------
+  const setText = (el, v) => { if (el && el.textContent !== v) el.textContent = v; };
+  let lastBtn = '';
+  function syncBar() {
+    const bar = $('#bar');
+    const show = state.view === 'main' && !state.loading && !state.err && state.tracks.size > 0;
+    bar.hidden = !show;
+    if (!show) return;
+    const s = engine.snapshot();
+    const active = s.status === 'playing' || s.status === 'paused' || s.status === 'starting';
+    const t = s.trackId ? state.tracks.get(s.trackId) : null;
+    const tot = totals();
+
+    if (active && t && s.win) {
+      const nextT = s.nextId ? state.tracks.get(s.nextId) : null;
+      setText($('#bar-name'), t.name);
+      setText($('#bar-name'), t.name);
+      setText($('#bar-sub'), s.status === 'starting' ? 'Starting…' : s.audition ? 'Past the cut · Skip carries on with the set' : s.status === 'paused' ? 'Paused' : s.single ? 'Preview' : nextT ? 'Next: ' + nextT.name : 'Last song');
+      setText($('#bar-left'), s.audition ? '' : '−' + fmt(Math.max(0, s.win.end - s.pos)));
+      const dur = Math.max(1, t.dur);
+      const win = $('#scrub-win');
+      win.style.left = ((s.win.start / dur) * 100).toFixed(2) + '%';
+      win.style.width = (((s.win.end - s.win.start) / dur) * 100).toFixed(2) + '%';
+      if (!scrubbing) {
+        $('#scrub-ph').style.left = clamp((s.pos / dur) * 100, 0, 100).toFixed(2) + '%';
+        setText($('#t-pos'), fmt(s.pos));
+      }
+      setText($('#t-cut'), s.audition ? 'past the cut' : 'cut at ' + fmt(s.win.end));
+      setText($('#t-dur'), fmt(t.dur));
+      const sc = $('#scrub');
+      sc.setAttribute('aria-valuenow', String(Math.round(clamp((s.pos / dur) * 100, 0, 100))));
+      sc.setAttribute('aria-valuetext', fmt(s.pos) + ' of ' + fmt(t.dur));
+    } else {
+      setText($('#bar-name'), s.status === 'done' ? 'Set finished' : 'Ready');
+      setText($('#bar-sub'), `${tot.n} songs · ${fmtLong(tot.ms)}`);
+      setText($('#bar-left'), '');
+    }
+    const live = s.status === 'playing' || s.status === 'paused';
+    $('#scrub-row').hidden = !live;
+    $('#scrub-times').hidden = !live;
+
+    const main = $('#b-main');
+    const want = s.status === 'playing' ? 'pause' : s.status === 'paused' ? 'resume' : s.status === 'starting' ? 'wait' : 'play';
+    if (lastBtn !== want) {
+      lastBtn = want;
+      main.dataset.act = want === 'wait' ? 'noop' : want;
+      main.textContent = { pause: 'Pause', resume: 'Resume', wait: 'Starting…', play: s.status === 'done' ? 'Play set again' : 'Play set' }[want];
+      main.disabled = want === 'wait';
+    }
+    $('#b-skip').hidden = !active;
+    $('#b-stop').hidden = !active;
+
+    const note = s.note || state.barNote;
+    const noteEl = $('#bar-note');
+    noteEl.hidden = !note;
+    setText(noteEl, note || '');
+    noteEl.classList.toggle('bad', s.status === 'error' || s.status === 'stopped');
+
+    let meta = '';
+    if (active) {
+      const bits = [wake ? 'Screen stays on' : 'Set the phone to never auto-lock'];
+      const fadeText = { on: 'Smooth changes on', checking: 'Checking volume control…', unavailable: 'Smooth changes unavailable on this phone (hard cuts)' }[s.fade];
+      if (fadeText) bits.push(fadeText);
+      meta = bits.join(' · ');
+    }
+    setText($('#bar-meta'), meta);
+    $('#bar-meta').hidden = !meta;
+
+    // highlight the playing row and move its playhead
+    const rowId = active && t ? t.id : null;
+    if (rowId !== shownRow) {
+      if (shownRow) {
+        const old = rowEl(shownRow);
+        if (old) { old.classList.remove('playing'); const b = $('.play-btn', old); if (b) { b.innerHTML = ICON.play; b.dataset.ico = 'play'; } }
+      }
+      shownRow = rowId;
+    }
+    if (rowId) {
+      const li = rowEl(rowId);
+      if (li) {
+        li.classList.add('playing');
+        const ph = $('.ph', li);
+        if (ph && !(scrubbing && scrubbing.el.closest('.row') === li)) ph.style.left = clamp((s.pos / t.dur) * 100, 0, 100).toFixed(2) + '%';
+        const b = $('.play-btn', li);
+        const ico = s.status === 'playing' ? 'pause' : 'play';
+        if (b && b.dataset.ico !== ico) { b.innerHTML = ICON[ico]; b.dataset.ico = ico; }
+      }
+    }
+  }
+  if ('ResizeObserver' in window) {
+    new ResizeObserver(() => {
+      const bar = $('#bar');
+      document.documentElement.style.setProperty('--bar-h', (bar.hidden ? 0 : bar.offsetHeight) + 'px');
+    }).observe($('#bar'));
+  }
+
+  // ---- settings sheet -------------------------------------------------------------------------------------
+  function sheetHTML() {
+    if (state.sheetView === 'import') return importHTML();
+    const p = state.prefs;
+    const devs = state.devices || [];
+    const opt = (v, label, cur) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${label}</option>`;
+    const confirmBlock = (kind, ask, yes) =>
+      state.confirm === kind
+        ? `<p class="sub">${ask}</p><div class="btn-row"><button class="btn small primary" data-act="${yes}">Yes</button><button class="btn small" data-act="confirm-no">Cancel</button></div>`
+        : '';
+    return `<div class="sheet-head"><h1>Settings</h1><button class="icon-btn" data-act="close-sheet" aria-label="Close settings">${ICON.close}</button></div>
+
+    <section class="set-group" aria-label="Song length">
+      <div class="set-row"><span class="lbl">Default song length</span>
+        <div class="stepper"><button data-act="maxlen" data-d="-15000" aria-label="15 seconds shorter">−15s</button>
+        <input id="maxlen" data-change="maxlen" inputmode="numeric" autocomplete="off" value="${fmt(p.maxLen)}" aria-label="Default song length">
+        <button data-act="maxlen" data-d="15000" aria-label="15 seconds longer">+15s</button></div>
+        <p class="sub">How long each song plays unless you give that song its own length. To do that, tap “plays …” on the song.</p></div>
+      <div class="set-row"><label for="transition">Change between songs</label>
+        <select id="transition" data-change="transition">${opt('blend', 'Smooth blend (dips to 30%)', p.transition)}${opt('deep', 'Deeper dip (to 10%)', p.transition)}${opt('silence', 'Fade to silence', p.transition)}</select>
+        <p class="sub">Spotify plays one song at a time, so two songs cannot overlap. Instead the volume eases down, the next song is started a moment early, and the volume eases back up, so there is no dead air.</p></div>
+      <div class="set-row"><label for="fade">Length of the change</label>
+        <select id="fade" data-change="fade">${opt(0, 'Off (hard cut)', p.fadeMs)}${opt(2000, '2 seconds', p.fadeMs)}${opt(3000, '3 seconds', p.fadeMs)}${opt(4000, '4 seconds', p.fadeMs)}${opt(6000, '6 seconds', p.fadeMs)}${opt(7000, '7 seconds', p.fadeMs)}${opt(8000, '8 seconds', p.fadeMs)}${opt(9000, '9 seconds', p.fadeMs)}${opt(10000, '10 seconds', p.fadeMs)}</select>
+        <p class="sub">Uses the phone's Spotify volume, which not every phone allows. The bar tells you if it does not. Try it with Rehearsal mode.</p></div>
+      <div class="set-row"><label for="include">Autoplay plays</label>
+        <select id="include" data-change="include">${opt('except1', 'Everything except 1s (unrated songs play)', p.include)}${opt('min2', 'Rated 2 or higher', p.include)}${opt('min3', 'Rated 3 or higher', p.include)}${opt('min4', 'Rated 4 or higher', p.include)}${opt('min5', 'Only 5s (must plays)', p.include)}</select>
+        <p class="sub">Songs left out are dimmed in the list and skipped by autoplay.</p></div>
+    </section>
+
+    <section class="set-group" aria-label="Playback">
+      <div class="set-row"><label class="check"><input type="checkbox" data-change="rehearsal" ${p.rehearsal ? 'checked' : ''}> Rehearsal mode</label>
+        <p class="sub">Every song plays only ${fmt(p.rehearsalLen)}, so you can check the order, cuts and fades in a few minutes.</p></div>
+      <div class="set-row"><label class="check"><input type="checkbox" data-change="volmatch" ${p.volume == null ? 'checked' : ''}> Use the phone's current volume</label>
+        ${p.volume == null ? '' : `<input class="range" type="range" min="10" max="100" step="5" value="${p.volume}" data-input="volume" data-change="volume" aria-label="Playback volume"><span class="mono" id="vol-val">${p.volume}%</span>`}
+        <p class="sub">Fades return to this level.</p></div>
+      <div class="set-row"><span class="lbl">Play on</span>
+        <label class="dev"><input type="radio" name="dev" value="" data-change="device" ${!p.deviceId ? 'checked' : ''}> Whatever Spotify is using now</label>
+        ${devs.map((d) => `<label class="dev"><input type="radio" name="dev" value="${esc(d.id)}" data-change="device" ${p.deviceId === d.id ? 'checked' : ''}> <span>${esc(d.name)} <span class="sub">${esc(d.type)}${d.is_active ? ' · active' : ''}</span></span></label>`).join('')}
+        <div class="btn-row"><button class="btn small" data-act="dev-refresh">Look for devices</button></div></div>
+    </section>
+
+    <section class="set-group" aria-label="Playlist">
+      <div class="set-row"><span class="lbl">${esc(state.playlist ? state.playlist.name : '')}</span>
+        <div class="btn-row"><button class="btn small" data-act="refresh">Reload from Spotify</button><button class="btn small" data-act="change-playlist">Choose another</button>
+        ${orderDiffers() ? '<button class="btn small" data-act="match-order">Use Spotify\'s order</button>' : ''}</div>
+        <p class="sub">${orderDiffers() ? 'The order here is only on this phone. Use the Save order to Spotify button on the main screen to change the playlist in Spotify.' : 'This order matches the playlist in Spotify.'}</p></div>
+      <div class="set-row"><span class="lbl">Paste a list</span>
+        <p class="sub">Paste a set list and the page puts the songs in that order and sets the ratings for you.</p>
+        <div class="btn-row"><button class="btn small" data-act="imp-open">Paste a list…</button></div></div>
+      <div class="set-row"><span class="lbl">Backup</span>
+        <p class="sub">Ratings and trims are saved on this phone. Copy a backup so they cannot be lost.</p>
+        <div class="btn-row"><button class="btn small" data-act="copy-backup">Copy backup</button></div>
+        <textarea id="restore" placeholder="Paste a backup here to restore it" aria-label="Backup text" spellcheck="false"></textarea>
+        <div class="btn-row"><button class="btn small" data-act="restore">Restore</button></div></div>
+    </section>
+
+    <section class="set-group" aria-label="Account">
+      <div class="set-row"><span class="lbl">Spotify account</span>
+        <div class="btn-row"><button class="btn small" data-act="logout-ask">Log out</button></div>
+        ${confirmBlock('logout', 'Log out of Spotify on this phone? Ratings and trims stay saved.', 'logout-yes')}</div>
+      <div class="set-row"><details><summary>Activity log</summary><ul class="log" id="log">${state.logs.map((l) => `<li>${esc(l)}</li>`).join('')}</ul></details></div>
+    </section>`;
+  }
+  function renderSheet() {
+    const sh = $('#sheet');
+    const y = sh.scrollTop;
+    $('#sheet-in').innerHTML = sheetHTML();
+    sh.scrollTop = y;
+  }
+  function openSheet(view) {
+    state.sheet = true;
+    state.sheetView = view || '';
+    $('#sheet').hidden = false;
+    renderSheet();
+    $('#sheet').scrollTop = 0;
+  }
+  function closeSheet() {
+    state.sheet = false;
+    state.sheetView = '';
+    state.confirm = '';
+    $('#sheet').hidden = true;
+  }
+
+  // ---- pasting a list of songs --------------------------------------------------------------------------------
+  const IMP_EXAMPLE = '5 | Dua Lipa - Dance The Night\n4 | Stevie Wonder - Signed, Sealed, Delivered\n3 | Natalie Cole - This Will Be';
+  const songLabel = (id) => { const t = state.tracks.get(id); return t ? `${t.name} \u2013 ${t.artists}` : id; };
+  function importResultHTML() {
+    const im = state.imp;
+    if (im.done) {
+      return `<div class="imp-done"><p class="sub"><b>${esc(im.done)}</b></p>
+        <div class="btn-row"><button class="btn small primary" data-act="imp-show">Show the playlist</button>${state.impUndo ? '<button class="btn small" data-act="imp-undo">Undo</button>' : ''}</div></div>`;
+    }
+    const r = im.res;
+    if (!r) return '';
+    const total = r.matches.length + r.notFound.length;
+    if (!total) return '<p class="err" role="alert">There are no songs in that text. Paste one song per line, like the example above.</p>';
+    const weak = r.matches.filter((m) => m.weak);
+    const nf = r.notFound.filter((x) => !x.repeat);
+    const rep = r.notFound.length - nf.length;
+    const rated = r.matches.filter((m) => m.entry.rating).length;
+    let h = `<p class="sub"><b>${r.matches.length} of ${total} lines matched songs in this playlist.</b>${rated ? ` ${rated} have a rating.` : ' None has a rating, so only the order will change.'}${rep ? ` ${rep} repeated line${rep > 1 ? 's were' : ' was'} skipped.` : ''}</p>`;
+    if (nf.length) h += `<div class="imp-list"><p class="sub"><b>Not found in this playlist (${nf.length}):</b></p><ul>${nf.slice(0, 12).map((x) => `<li>${esc(x.entry.label)}</li>`).join('')}</ul>${nf.length > 12 ? `<p class="sub">…and ${nf.length - 12} more.</p>` : ''}</div>`;
+    if (weak.length) h += `<div class="imp-list"><p class="sub"><b>Please check these ${weak.length} match${weak.length > 1 ? 'es' : ''}:</b></p><ul>${weak.slice(0, 12).map((m) => `<li>${esc(m.entry.label)} <span class="arrow">→</span> ${esc(songLabel(m.id))}</li>`).join('')}</ul></div>`;
+    if (!r.matches.length) return h;
+    const restN = Math.max(0, state.tracks.size - r.matches.length);
+    if (restN) h += `<label class="check"><input type="checkbox" data-change="imp-rest2" ${im.rest2 ? 'checked' : ''}> Rate the ${restN} song${restN > 1 ? 's' : ''} that ${restN > 1 ? 'are' : 'is'} not in the list 2 (backup), if ${restN > 1 ? 'they have' : 'it has'} no rating yet</label>`;
+    if (rated) h += `<label class="check"><input type="checkbox" data-change="imp-min3" ${im.min3 ? 'checked' : ''}> Set “Autoplay plays” to songs rated 3 or higher (now: ${esc(INCLUDE_NAMES[state.prefs.include] || state.prefs.include)})</label>`;
+    h += `<p class="sub">The ${r.matches.length} matched songs go to the top in the order of your list. ${restN ? `The other ${restN} song${restN > 1 ? 's' : ''} follow${restN > 1 ? '' : 's'} in ${restN > 1 ? 'their' : 'its'} current order. ` : ''}Trims and lengths are kept.</p>
+      <div class="btn-row"><button class="btn small primary" data-act="imp-apply">Apply to this phone</button><button class="btn small" data-act="imp-cancel">Cancel</button></div>`;
+    return h;
+  }
+  const INCLUDE_NAMES = { except1: 'everything except 1s', min2: 'rated 2 or higher', min3: 'rated 3 or higher', min4: 'rated 4 or higher', min5: 'only 5s' };
+  function importHTML() {
+    const im = state.imp;
+    return `<div class="sheet-head"><h1>Paste a list</h1><button class="icon-btn" data-act="close-sheet" aria-label="Close">${ICON.close}</button></div>
+    <section class="set-group" aria-label="Paste a list">
+      <div class="set-row"><span class="lbl">${esc(state.playlist ? state.playlist.name : '')}</span>
+        <p class="sub">Paste one song per line: a rating from 1 to 5, a bar, then the artist and title. The rating is optional. Lines that start with # are notes and are skipped. Rows copied from a table in a document also work.</p>
+        <pre class="imp-ex">${esc(IMP_EXAMPLE)}</pre>
+        <textarea id="imp-text" class="imp-text" placeholder="Paste your list here" aria-label="List of songs" spellcheck="false" autocapitalize="off" autocomplete="off">${esc(im.text)}</textarea>
+        <div class="btn-row"><button class="btn small primary" data-act="imp-check">Check list</button><button class="btn small" data-act="imp-clear">Clear</button>${state.impUndo && !im.done ? '<button class="btn small" data-act="imp-undo">Undo last paste</button>' : ''}</div>
+        <div id="imp-result">${importResultHTML()}</div></div>
+    </section>`;
+  }
+  function importOpen() {
+    if (state.saving) { toast('Wait until the order has finished saving to Spotify.'); return; }
+    if (state.view !== 'main' || state.loading || !state.tracks.size) { toast('Open a playlist first.'); return; }
+    if (isActive()) { toast('Stop the set first, then paste a list.'); return; }
+    state.imp.res = null;
+    state.imp.done = null;
+    openSheet('import');
+  }
+  function importCheck() {
+    const parsed = E.parseList(state.imp.text);
+    state.imp.res = E.matchList(parsed.entries, Array.from(state.tracks.values()));
+    state.imp.done = null;
+    $('#imp-result').innerHTML = importResultHTML();
+    const el = $('#imp-result');
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+  }
+  function importApply() {
+    const r = state.imp.res;
+    if (!r || !r.matches.length) return;
+    const ratings = {};
+    for (const [id, t] of state.tracks) ratings[id] = t.rating || 0;
+    state.impUndo = { order: state.order.slice(), customOrder: state.customOrder, ratings, include: state.prefs.include };
+    const plan = E.planList(r.matches, state.order, ratings, state.imp.rest2 ? 2 : 0);
+    let nRated = 0;
+    for (const [id, v] of plan.ratings) {
+      const t = state.tracks.get(id);
+      if (t && t.rating !== v) { t.rating = v; nRated++; }
+    }
+    state.order = plan.order;
+    state.customOrder = state.order.some((id, i) => id !== state.spotifyOrder[i]);
+    arrCache = null;
+    const anyRating = r.matches.some((m) => m.entry.rating);
+    if (anyRating && state.imp.min3) { state.prefs.include = 'min3'; savePrefs(); }
+    persist();
+    render({ keepScroll: true });
+    state.imp.done = `Done. ${plan.listed} songs placed at the top, ${nRated} rating${nRated === 1 ? '' : 's'} set.${orderDiffers() ? ' To change the playlist in Spotify too, use Save order to Spotify on the main screen.' : ''}`;
+    renderSheet();
+  }
+  function importUndo() {
+    const u = state.impUndo;
+    if (!u) return;
+    for (const [id, t] of state.tracks) t.rating = u.ratings[id] || 0;
+    const inSet = new Set(state.order);
+    const kept = u.order.filter((id) => inSet.has(id));
+    const keptSet = new Set(kept);
+    state.order = kept.concat(state.order.filter((id) => !keptSet.has(id)));
+    state.customOrder = u.customOrder;
+    state.prefs.include = u.include;
+    savePrefs();
+    state.impUndo = null;
+    state.imp.res = null;
+    state.imp.done = null;
+    arrCache = null;
+    persist();
+    render({ keepScroll: true });
+    renderSheet();
+    toast('Put back the way it was.');
+  }
+
+  // ---- backup ---------------------------------------------------------------------------------------------
+  function backupText() {
+    saveNow();
+    const t = {};
+    for (const x of state.tracks.values()) if (x.start != null || x.end != null || x.len != null || x.rating) t[x.id] = { s: x.start, e: x.end, l: x.len, r: x.rating || 0 };
+    const p = state.prefs;
+    return JSON.stringify({
+      app: 'set-trimmer', v: 1, playlist: state.playlist, customOrder: state.customOrder, order: state.customOrder ? state.order : [], t,
+      prefs: { maxLen: p.maxLen, fadeMs: p.fadeMs, include: p.include },
+    });
+  }
+  function restoreFrom(text) {
+    let b;
+    try { b = JSON.parse(text); } catch (e) { return 'That is not a valid backup.'; }
+    if (!b || b.app !== 'set-trimmer' || !b.t) return 'That is not a Set Trimmer backup.';
+    if (state.playlist && b.playlist && b.playlist.id !== state.playlist.id) return 'That backup is for a different playlist.';
+    let n = 0;
+    for (const x of state.tracks.values()) {
+      const s = b.t[x.id];
+      x.start = s && s.s != null ? s.s : null;
+      x.end = s && s.e != null ? s.e : null;
+      x.len = s && s.l != null ? s.l : null;
+      x.rating = E.normRating(s && s.r);
+      if (s) n++;
+    }
+    state.customOrder = !!b.customOrder;
+    if (state.customOrder && Array.isArray(b.order)) {
+      const inSet = new Set(state.order);
+      const kept = b.order.filter((id) => inSet.has(id));
+      const keptSet = new Set(kept);
+      state.order = kept.concat(state.order.filter((id) => !keptSet.has(id)));
+      arrCache = null;
+    }
+    if (b.prefs) {
+      if (Number.isFinite(b.prefs.maxLen)) state.prefs.maxLen = b.prefs.maxLen;
+      if (Number.isFinite(b.prefs.fadeMs)) state.prefs.fadeMs = b.prefs.fadeMs;
+      if (b.prefs.include) state.prefs.include = E.normInclude(b.prefs.include);
+      savePrefs();
+    }
+    persist();
+    render({ keepScroll: true });
+    renderSheet();
+    return 'Restored ' + n + ' songs.';
+  }
+
+  // ---- saving the order to Spotify ------------------------------------------------------------------------
+  const orderDiffers = () => state.order.length === state.spotifyOrder.length && state.order.some((id, i) => id !== state.spotifyOrder[i]);
+  function savePanelHTML() {
+    if (state.loading || state.err || !state.tracks.size) return '';
+    const sv = state.saving;
+    if (sv) {
+      const pct = sv.total ? Math.round((sv.done / sv.total) * 100) : 0;
+      return `<p class="sub"><b>${esc(sv.text)}</b></p><div class="save-prog" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></div>`;
+    }
+    if (state.confirm === 'save-order') {
+      if (!hasWrite()) {
+        const ru = redirectUri();
+        const ok = state.cfg.okRedirect;
+        const moved = ok && ok !== ru;
+        return '<p class="sub">To change the order in Spotify, Spotify first has to give this page permission to edit your playlists. You will go to Spotify, tap Agree, and come straight back. Your order, ratings and trims are kept.</p>'
+          + (moved ? `<p class="warn" role="alert">This page is open at a different address than the one you first connected from (<b>${esc(ok)}</b>). Open the page from that address, or add the address below to your Spotify app.</p>` : '')
+          + '<p class="sub">Spotify only lets you back in if this exact address is listed under <b>Redirect URIs</b> in your Spotify app settings:</p>'
+          + `<div class="copyrow"><input class="ru-in" readonly value="${esc(ru)}" aria-label="Redirect URI"><button class="btn" data-act="copy-ru">Copy</button></div>`
+          + '<div class="btn-row"><button class="btn small primary" data-act="save-order-login">Continue to Spotify</button><button class="btn small" data-act="confirm-no">Cancel</button></div>';
+      }
+      return `<p class="sub">Change the order of <b>${esc(state.playlist ? state.playlist.name : 'this playlist')}</b> in Spotify? Only the order changes. No songs are added or removed. Anyone else who uses this playlist will see the new order.</p>`
+        + '<div class="btn-row"><button class="btn small primary" data-act="save-order-yes">Save order</button><button class="btn small" data-act="confirm-no">Cancel</button></div>';
+    }
+    if (!orderDiffers()) return state.saveErr ? `<p class="err" role="alert">${esc(state.saveErr)}</p>` : '';
+    if (state.truncated) return '<p class="sub">This playlist is too long to change in Spotify from here. The order is kept on this phone.</p>';
+    return `<div class="save-row"><span class="sub">This order is only on this phone.</span><button class="btn small primary" data-act="save-order">Save order to Spotify</button></div>${state.saveErr ? `<p class="err" role="alert">${esc(state.saveErr)}</p>` : ''}`;
+  }
+  function updateSavePanel() {
+    const el = $('#savepanel');
+    if (el) el.innerHTML = savePanelHTML();
+  }
+  const userError = (message) => Object.assign(new Error(message), { userMessage: message });
+
+  // Moves songs inside the real Spotify playlist until it matches state.order. Hidden items (local files, podcasts,
+  // repeated songs) stay at their own positions. Works from a fresh copy of the playlist, so a retry after a
+  // failure carries on from wherever Spotify got to.
+  async function saveOrderToSpotify() {
+    if (state.saving || !state.playlist) return;
+    const pid = state.playlist.id;
+    const wanted = state.order.slice();
+    state.confirm = '';
+    state.saveErr = '';
+    state.saving = { text: 'Checking the playlist in Spotify…', done: 0, total: 0 };
+    updateSavePanel();
+    let plan = null;
+    try {
+      const got = await fetchItems(pid);
+      if (got.truncated) throw userError('This playlist is too long to change in Spotify from here.');
+      const fresh = classify(got.raw);
+      if (fresh.keys !== state.rawKeys) {
+        throw userError('Songs were added or removed in Spotify since this page loaded the playlist. Tap the reload button (↻), then save the order again.');
+      }
+      try { plan = E.planReorder(fresh.slots, wanted, fresh.dupAt); } catch (e) {
+        throw userError('The order here no longer matches the playlist. Tap the reload button (↻), then save the order again.');
+      }
+      const total = plan.ops.length;
+      state.saving = { text: total ? `Saving to Spotify… 0 of ${total}` : 'Spotify already has this order.', done: 0, total };
+      updateSavePanel();
+      log(`Saving the order to Spotify: ${total} move${total === 1 ? '' : 's'}.`);
+      for (const op of plan.ops) {
+        await spot('PUT', `/playlists/${pid}/items`, { range_start: op.range_start, insert_before: op.insert_before, range_length: 1 });
+        state.saving.done++;
+        state.saving.text = `Saving to Spotify… ${state.saving.done} of ${total}`;
+        updateSavePanel();
+        await sleep(60);
+      }
+      // read it back so the page shows what Spotify really has
+      const after = classify((await fetchItems(pid)).raw);
+      const live = after.list.map((t) => t.id);
+      state.spotifyOrder = live;
+      state.rawKeys = after.keys;
+      const same = live.length === wanted.length && live.every((id, i) => id === wanted[i]);
+      state.saving = null;
+      if (same) {
+        if (state.order.length === wanted.length && state.order.every((id, i) => id === wanted[i])) state.customOrder = false;
+        persist();
+        log('Spotify playlist order saved.');
+        toast(total ? 'Saved. The playlist in Spotify now has this order.' : 'Spotify already had this order.', 4000);
+      } else {
+        state.saveErr = 'Spotify answered, but its order is not exactly the same. Tap the reload button (↻) to see what it has.';
+        log('Order saved, but the read-back differs.');
+      }
+    } catch (e) {
+      const done = state.saving ? state.saving.done : 0;
+      const total = state.saving ? state.saving.total : 0;
+      state.saving = null;
+      if (e.status === 403 && /scope/i.test(e.message || '')) {
+        if (state.auth) { state.auth.scope = ''; store.set('wt.auth', state.auth); }
+        state.confirm = 'save-order';
+        state.saveErr = 'Spotify needs your permission to change playlists.';
+      } else if (e.status === 403) {
+        state.saveErr = 'Spotify did not allow the change. Only playlists you created or collaborate on can be reordered.';
+      } else {
+        state.saveErr = (e.userMessage || e.message || 'Something went wrong.') + (done ? ` It stopped after ${done} of ${total} moves; saving again carries on.` : '');
+      }
+      log('Saving the order failed: ' + (e.message || e));
+    }
+    render({ keepScroll: true });
+  }
+
+  // ---- reorder mode ---------------------------------------------------------------------------------------
+  function updateIdx() {
+    document.querySelectorAll('.list .row').forEach((li, i) => { const x = $('.r-idx', li); if (x) x.textContent = String(i + 1); });
+  }
+  // Read the new order from the list on screen and save it.
+  function syncOrderFromDom() {
+    const ids = Array.from(document.querySelectorAll('.list .row')).map((x) => x.dataset.id);
+    updateIdx();
+    if (ids.length !== state.order.length || ids.every((id, i) => id === state.order[i])) return false;
+    state.order = ids;
+    state.customOrder = true;
+    arrCache = null;
+    state.saveErr = '';
+    persist();
+    updateSavePanel();
+    return true;
+  }
+  function moveStep(id, d) {
+    const li = rowEl(id);
+    if (!li) return;
+    const sib = d < 0 ? li.previousElementSibling : li.nextElementSibling;
+    if (!sib) return;
+    if (d < 0) sib.before(li); else sib.after(li);
+    syncOrderFromDom();
+    li.scrollIntoView({ block: 'nearest' });
+  }
+  let drag = null;
+  function dragFrame() {
+    if (!drag) return;
+    const { li, ph, list } = drag;
+    const barH = $('#bar').hidden ? 0 : $('#bar').offsetHeight;
+    const maxTop = Math.max(0, window.innerHeight - barH - li.offsetHeight);
+    const top = clamp(drag.y - drag.grab, 0, maxTop);
+    li.style.top = top + 'px';
+    // scroll the page when the finger nears the top or bottom edge
+    const edge = 90;
+    const bottomEdge = window.innerHeight - barH - edge;
+    if (drag.y < edge) window.scrollBy(0, -Math.min(18, Math.ceil((edge - drag.y) / 5)));
+    else if (drag.y > bottomEdge) window.scrollBy(0, Math.min(18, Math.ceil((drag.y - bottomEdge) / 5)));
+    // find where the placeholder belongs: before the first row whose middle is below the dragged row's middle
+    const centre = top + li.offsetHeight / 2;
+    const others = Array.from(list.children).filter((x) => x !== li && x !== ph);
+    let before = null;
+    for (const x of others) {
+      const r = x.getBoundingClientRect();
+      if (centre < r.top + r.height / 2) { before = x; break; }
+    }
+    if (before) { if (ph.nextElementSibling !== before) list.insertBefore(ph, before); }
+    else if (list.lastElementChild !== ph) list.appendChild(ph);
+    drag.raf = requestAnimationFrame(dragFrame);
+  }
+  function startDrag(e) {
+    const h = e.target.closest('[data-handle]');
+    if (!h || !state.reorder || drag) return;
+    const li = h.closest('.row');
+    if (!li) return;
+    e.preventDefault();
+    const rect = li.getBoundingClientRect();
+    const ph = document.createElement('li');
+    ph.className = 'row-ph';
+    ph.style.height = rect.height + 'px';
+    li.after(ph);
+    drag = { li, ph, list: li.parentElement, grab: e.clientY - rect.top, y: e.clientY, pid: e.pointerId, raf: 0, handle: h };
+    li.classList.add('dragging');
+    Object.assign(li.style, { position: 'fixed', left: rect.left + 'px', width: rect.width + 'px', top: rect.top + 'px', zIndex: '30' });
+    document.body.classList.add('is-dragging');
+    try { h.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
+    drag.raf = requestAnimationFrame(dragFrame);
+  }
+  function endDrag() {
+    if (!drag) return;
+    const { li, ph } = drag;
+    cancelAnimationFrame(drag.raf);
+    ph.replaceWith(li);
+    li.removeAttribute('style');
+    li.classList.remove('dragging');
+    document.body.classList.remove('is-dragging');
+    drag = null;
+    if (syncOrderFromDom()) toast('Order saved');
+    syncBar();
+  }
+  document.addEventListener('pointerdown', startDrag);
+  document.addEventListener('pointermove', (e) => { if (drag && e.pointerId === drag.pid) drag.y = e.clientY; });
+  document.addEventListener('pointerup', (e) => { if (drag && e.pointerId === drag.pid) endDrag(); });
+  document.addEventListener('pointercancel', (e) => { if (drag && e.pointerId === drag.pid) endDrag(); });
+
+  // ---- jumping around a song -------------------------------------------------------------------------------
+  // The bar in the player and the bar on every song row both work: tap or drag, and the song continues from there.
+  let scrubbing = null;
+  const scrubSurface = (el) => $('.scrub-track', el) || $('.win', el);
+  function paintScrub() {
+    const { el, frac, t } = scrubbing;
+    const ph = $('.scrub-ph', el) || $('.ph', el);
+    if (ph) ph.style.left = (frac * 100).toFixed(2) + '%';
+    if (el.dataset.scrub === 'bar') setText($('#t-pos'), fmt(frac * t.dur));
+  }
+  function scrubMove(e) {
+    const r = scrubSurface(scrubbing.el).getBoundingClientRect();
+    scrubbing.frac = clamp((e.clientX - r.left) / Math.max(1, r.width), 0, 1);
+    paintScrub();
+  }
+  async function jumpTo(id, ms) {
+    const s = engine.snapshot();
+    const live = s.status === 'playing' || s.status === 'paused';
+    if (s.status === 'starting') return;
+    if (live && s.trackId === id) await engine.seek(ms);
+    else if (live && !s.single) toast('A set is playing. Tap Stop first to listen to a different song.', 3500);
+    else await runFrom(id, { single: true, startAt: ms });
+    syncBar();
+  }
+  function endScrub(commit) {
+    const { el, t, frac } = scrubbing;
+    scrubbing = null;
+    const row = el.closest('.row');
+    if (row) row.classList.remove('scrubbing');
+    if (commit) jumpTo(t.id, Math.round(frac * t.dur)).catch((err) => toast(err.userMessage || err.message, 4000));
+    else syncBar();
+  }
+  async function seekBy(d) {
+    const s = engine.snapshot();
+    const t = s.trackId ? state.tracks.get(s.trackId) : null;
+    if (!t || (s.status !== 'playing' && s.status !== 'paused')) return;
+    await engine.seek(clamp(s.pos + d, 0, t.dur));
+    syncBar();
+  }
+  document.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest('[data-scrub]');
+    if (!el || state.reorder || scrubbing || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const id = el.dataset.scrub === 'bar' ? engine.snapshot().trackId : el.dataset.scrub;
+    const t = id ? state.tracks.get(id) : null;
+    if (!t) return;
+    scrubbing = { el, t, pid: e.pointerId, frac: 0 };
+    const row = el.closest('.row');
+    if (row) row.classList.add('scrubbing');
+    try { el.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
+    scrubMove(e);
+  });
+  document.addEventListener('pointermove', (e) => { if (scrubbing && e.pointerId === scrubbing.pid) scrubMove(e); });
+  document.addEventListener('pointerup', (e) => { if (scrubbing && e.pointerId === scrubbing.pid) { scrubMove(e); endScrub(true); } });
+  document.addEventListener('pointercancel', (e) => { if (scrubbing && e.pointerId === scrubbing.pid) endScrub(false); });
+  document.addEventListener('keydown', (e) => {
+    if (e.target && e.target.id === 'scrub' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      e.preventDefault();
+      seekBy(e.key === 'ArrowLeft' ? -5000 : 5000);
+    }
+  });
+
+  // ---- toast ------------------------------------------------------------------------------------------------
+  let toastTimer = null;
+  function toast(msg, ms = 2800) {
+    const el = $('#toast');
+    el.textContent = msg;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, ms);
+  }
+
+  // ---- events -------------------------------------------------------------------------------------------------
+  document.addEventListener('click', async (e) => {
+    const el = e.target.closest('[data-act]');
+    if (!el) return;
+    const act = el.dataset.act;
+    const rowNode = el.closest('.row');
+    const id = rowNode ? rowNode.dataset.id : null;
+    const t = id ? state.tracks.get(id) : null;
+    try {
+      switch (act) {
+        case 'login': return login();
+        case 'copy-ru': {
+          const box = el.closest('.copyrow').querySelector('input');
+          try { await navigator.clipboard.writeText(box.value); toast('Copied'); } catch (err) { box.select(); toast('Press and hold to copy'); }
+          return;
+        }
+        case 'choose':
+          if (el.getAttribute('aria-disabled') === 'true') { toast('Spotify hides the songs of playlists you did not create. Copy them into one of your own.', 4500); return; }
+          if (state.playlist && el.dataset.id === state.playlist.id && state.tracks.size && !state.loading) { state.view = 'main'; state.err = ''; render(); return; }
+          return openPlaylist(el.dataset.id, el.dataset.name);
+        case 'paste-pl': {
+          const pid = parsePlaylistId($('#plLink').value);
+          if (!pid) { toast('That does not look like a Spotify playlist link.'); return; }
+          return openPlaylist(pid, '');
+        }
+        case 'logout-ask': state.confirm = 'logout'; if (state.sheet) renderSheet(); else logout(); return;
+        case 'logout-yes': return logout();
+        case 'confirm-no': state.confirm = ''; updateSavePanel(); return renderSheet();
+        case 'save-order': state.confirm = 'save-order'; state.saveErr = ''; updateSavePanel(); return;
+        case 'save-order-yes': return saveOrderToSpotify();
+        case 'save-order-login':
+          saveNow();
+          store.set('wt.resume', { pl: state.playlist && state.playlist.id });
+          return login(true);
+        case 'refresh': return openPlaylist(state.playlist.id, state.playlist.name);
+        case 'change-playlist':
+          if (state.view === 'main' && isActive()) { closeSheet(); state.confirm = 'switch'; window.scrollTo(0, 0); render(); return; }
+          return goPick();
+        case 'switch-yes': await engine.stop().catch(() => {}); return goPick();
+        case 'switch-no': state.confirm = ''; render({ keepScroll: true }); return;
+        case 'pick-back': state.view = 'main'; state.err = ''; render(); return;
+        case 'pl-refresh': state.playlists = null; state.err = ''; render(); try { await loadPlaylists(); } catch (err) { state.err = err.userMessage || err.message; render(); } return;
+        case 'match-order': {
+          state.customOrder = false;
+          state.order = state.spotifyOrder.slice();
+          arrCache = null;
+          persist();
+          render({ keepScroll: true });
+          return renderSheet();
+        }
+        case 'reorder': state.reorder = true; state.expanded = null; state.filter = 'all'; window.scrollTo(0, 0); return render();
+        case 'reorder-done': state.reorder = false; return render({ keepScroll: true });
+        case 'rmove': return moveStep(id, Number(el.dataset.d));
+        case 'settings': return openSheet();
+        case 'imp-open': return importOpen();
+        case 'imp-check': return importCheck();
+        case 'imp-clear': state.imp.text = ''; state.imp.res = null; state.imp.done = null; renderSheet(); return;
+        case 'imp-cancel': state.imp.res = null; $('#imp-result').innerHTML = ''; return;
+        case 'imp-apply': return importApply();
+        case 'imp-undo': return importUndo();
+        case 'imp-show': return closeSheet();
+        case 'close-sheet': return closeSheet();
+        case 'filter': state.filter = el.dataset.f; state.expanded = null; return render();
+        case 'toggle': return setExpanded(id);
+        case 'rate': return setRating(id, Number(el.dataset.v));
+        case 'nudge': {
+          const w = E.trackWindow(t, state.prefs);
+          const f = el.dataset.f;
+          return setField(id, f, (f === 'start' ? w.start : w.end) + Number(el.dataset.d));
+        }
+        case 'autoend': t.end = null; persist(); return patchRow(id);
+        case 'nudge-len': return setLen(id, chosenLen(t) + Number(el.dataset.d));
+        case 'default-len': t.len = null; t.end = null; persist(); return patchRow(id);
+        case 'reset-trim': t.start = null; t.end = null; t.len = null; persist(); return patchRow(id);
+        case 'mark-start': return markHere(id, 'start');
+        case 'mark-end': return markHere(id, 'end');
+        case 'move': return moveTo(id, state.order.indexOf(id) + 1 + Number(el.dataset.d));
+        case 'hear-start': return runFrom(id, { single: true, startAt: E.trackWindow(t, state.prefs).start });
+        case 'hear-end': {
+          const w = E.trackWindow(t, state.prefs);
+          return runFrom(id, { single: true, startAt: Math.max(w.start, w.end - 9000) });
+        }
+        case 'playfrom': {
+          const s = engine.snapshot();
+          if (s.trackId === id && s.status === 'playing') return engine.pause();
+          if (s.trackId === id && s.status === 'paused') return engine.resume();
+          return runFrom(id, {});
+        }
+        case 'play': return runFrom(null, {});
+        case 'pause': return engine.pause();
+        case 'resume': return engine.resume();
+        case 'skip': return engine.skip();
+        case 'seek-rel': return seekBy(Number(el.dataset.d));
+        case 'stop': return engine.stop();
+        case 'jump': {
+          const s = engine.snapshot();
+          const li = s.trackId && rowEl(s.trackId);
+          if (li) li.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          return;
+        }
+        case 'maxlen': state.prefs.maxLen = clamp(state.prefs.maxLen + Number(el.dataset.d), 45000, 600000); savePrefs(); render({ keepScroll: true }); return renderSheet();
+        case 'dev-refresh': {
+          try { const d = await spot('GET', '/me/player/devices'); state.devices = (d && d.devices) || []; toast(state.devices.length ? 'Found ' + state.devices.length + ' device' + (state.devices.length > 1 ? 's' : '') : 'No devices found. Open Spotify on the phone.'); } catch (err) { toast(err.userMessage || err.message); }
+          return renderSheet();
+        }
+        case 'copy-backup': {
+          const text = backupText();
+          try { await navigator.clipboard.writeText(text); toast('Backup copied. Paste it into a note or message to yourself.', 4000); }
+          catch (err) { const ta = $('#restore'); ta.value = text; ta.select(); toast('Select and copy the text in the box.', 4000); }
+          return;
+        }
+        case 'restore': return toast(restoreFrom($('#restore').value), 4000);
+        default: return;
+      }
+    } catch (err) {
+      toast(err.userMessage || err.message || 'Something went wrong', 4500);
+    }
+  });
+
+  document.addEventListener('change', (e) => {
+    const el = e.target;
+    const kind = el.dataset && el.dataset.change;
+    if (!kind) return;
+    const rowNode = el.closest('.row');
+    const id = rowNode ? rowNode.dataset.id : null;
+    switch (kind) {
+      case 'start':
+      case 'end': {
+        const ms = parseTime(el.value);
+        if (ms == null) { toast('Use minutes and seconds, like 2:30.'); return patchRow(id); }
+        return setField(id, kind, ms);
+      }
+      case 'len': {
+        const ms = parseTime(el.value);
+        if (ms == null) { toast('Use minutes and seconds, like 1:45.'); return patchRow(id); }
+        return setLen(id, ms);
+      }
+      case 'order': {
+        const n = parseInt(el.value, 10);
+        if (!Number.isFinite(n)) return patchRow(id);
+        return moveTo(id, n);
+      }
+      case 'maxlen': {
+        const ms = parseTime(el.value);
+        if (ms == null) { toast('Use minutes and seconds, like 2:30.'); return renderSheet(); }
+        state.prefs.maxLen = clamp(ms, 45000, 600000);
+        savePrefs(); render({ keepScroll: true }); return renderSheet();
+      }
+      case 'imp-rest2': state.imp.rest2 = el.checked; return;
+      case 'imp-min3': state.imp.min3 = el.checked; return;
+      case 'fade': state.prefs.fadeMs = Number(el.value); return savePrefs();
+      case 'transition': state.prefs.transition = E.normTransition(el.value); return savePrefs();
+      case 'include': state.prefs.include = el.value; savePrefs(); return render({ keepScroll: true });
+      case 'rehearsal': state.prefs.rehearsal = el.checked; savePrefs(); return render({ keepScroll: true });
+      case 'volmatch': state.prefs.volume = el.checked ? null : 80; savePrefs(); return renderSheet();
+      case 'volume': state.prefs.volume = Number(el.value); return savePrefs();
+      case 'device': state.prefs.deviceId = el.value || null; return savePrefs();
+      default:
+    }
+  });
+  document.addEventListener('input', (e) => {
+    if (e.target.dataset && e.target.dataset.input === 'volume') setText($('#vol-val'), e.target.value + '%');
+    if (e.target.id === 'plFilter') filterPlaylists(e.target.value);
+    if (e.target.id === 'imp-text') {
+      state.imp.text = e.target.value;
+      if (state.imp.res || state.imp.done) { state.imp.res = null; state.imp.done = null; $('#imp-result').innerHTML = ''; }
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) saveNow();
+    else { const s = engine.snapshot(); keepAwake(s.status === 'playing' || s.status === 'paused'); engine.poll(); syncBar(); }
+  });
+  window.addEventListener('pagehide', saveNow);
+
+  // ---- start ------------------------------------------------------------------------------------------------------
+  async function init() {
+    document.title = 'Set Trimmer';
+    render();
+    setInterval(() => { engine.tick(); syncBar(); }, 250);
+    setInterval(() => engine.poll(), 4000);
+    try {
+      await handleRedirect();
+      if (state.auth && state.view === 'setup') { state.view = state.playlist ? 'main' : 'pick'; state.err = ''; render(); }
+    } catch (e) {
+      state.err = e.message;
+      render();
+      return;
+    }
+    if (!state.auth) return;
+    try {
+      await loadMe();
+      if (state.view === 'main' && state.playlist) await openPlaylist(state.playlist.id, state.playlist.name);
+      else await loadPlaylists();
+      const rs = store.get('wt.resume');
+      if (rs) {
+        store.del('wt.resume');
+        if (state.playlist && rs.pl === state.playlist.id && hasWrite() && orderDiffers()) { state.confirm = 'save-order'; updateSavePanel(); }
+        else if (!hasWrite()) toast('Spotify did not give permission to change playlists.', 5000);
+      }
+      if (state.notice) { toast(state.notice, 6000); state.notice = ''; }
+    } catch (e) {
+      if (e.authFailed) return;
+      state.err = e.userMessage || e.message;
+      state.loading = false;
+      render();
+    }
+  }
+  init();
+})();
+
+</script>
+</body>
+</html>
